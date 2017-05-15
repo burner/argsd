@@ -1,6 +1,6 @@
 import args;
 
-import std.array : front;
+import std.array : empty, front;
 import std.stdio;
 
 enum Optional {
@@ -103,7 +103,9 @@ unittest {
 	assert(arg5.optional == Optional.no);
 }
 
-bool parseImpl(string mem, Opt)(ref Opt opt, ref string[] args) {
+void parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix, 
+		ref string[] args) 
+{
 	import std.traits : hasUDA, getUDAs;
 	import std.algorithm.searching : startsWith, canFind;
 	import std.algorithm.mutation : remove;
@@ -113,15 +115,22 @@ bool parseImpl(string mem, Opt)(ref Opt opt, ref string[] args) {
 	static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 		Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
 		foreach(idx, arg; args) {
-			if((arg.startsWith("--") && arg.canFind(mem) )
-					|| (optMemArg.shortName != '\0' 
-						&& arg.startsWith("-") 
-						&& arg.canFind(optMemArg.shortName)) )
+			if( (arg.startsWith("--") 
+						&& arg.canFind(mem) 
+						&& (prefix.empty || prefix.canFind(prefix)))
+				|| (optMemArg.shortName != '\0' 
+					&& arg.startsWith("-") 
+					&& arg.canFind(optMemArg.shortName)
+					&& (prefix.empty || prefix.canFind(prefix))) )
 			{
-				static if(is(typeof(__traits(getMember, opt, mem)) == bool)) {
+				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
+					parseArgs(__traits(getMember, opt, mem), mem ~ ".", args);
+				} else static if(is(typeof(__traits(getMember, opt, mem)) == bool)) 
+				{
 					__traits(getMember, opt, mem) = true;
+					args = remove(args, idx);
 				} else {
-					if(idx + 1 > args.length) {
+					if(idx + 1 >= args.length) {
 						throw new Exception("Not enough arguments passed for '"
 								~ arg ~ "' arg.");
 					}
@@ -129,20 +138,25 @@ bool parseImpl(string mem, Opt)(ref Opt opt, ref string[] args) {
 						to!(typeof(__traits(getMember, opt, mem)))(args[idx + 1]);
 					args = remove(args, idx);
 				}
-				args = remove(args, idx);
-				return true;
+				return;
 			}
 		}
+		if(optMemArg.optional == Optional.no) {
+			throw new Exception("Non Optional argument for '" ~ mem 
+					~ "' not found.");
+		}
 	}
-	return false;
 }
 
-void parseCommandLineArguments(Opt)(ref Opt opt, string prefix, ref string[] args) 
+void parseArgs(Opt)(ref Opt opt, ref string[] args) 
+{
+	parseArgs(opt, "", args);
+}
+
+void parseArgs(Opt)(ref Opt opt, string prefix, ref string[] args) 
 {
 	foreach(optMem; __traits(allMembers, Opt)) {
-		if(!parseImpl!(optMem)(opt, args)) {
-			throw new Exception("No Option for '" ~ args.front ~ "' found");
-		}
+		parseArgsImpl!(optMem)(opt, prefix, args);
 	}
 }
 
@@ -155,8 +169,51 @@ unittest {
 
 	auto args = ["--a", "10", "-c", "11", "--d"];
 	Options opt;
-	parseCommandLineArguments(opt, "", args);
+	parseArgs(opt, args);
 	assert(opt.a == 10);
 	assert(opt.b == 11);
 	assert(opt.d == true);
+}
+
+unittest {
+	import std.exception : assertThrown;
+
+	static struct Options {
+		@Arg(Optional.no) int a = 1;
+	}
+
+	auto args = ["-c", "11", "--d"];
+	Options opt;
+	assertThrown!(Exception)(parseArgs(opt, args));
+}
+
+unittest {
+	import std.exception : assertThrown;
+
+	static struct Options {
+		@Arg() int a = 1;
+	}
+
+	auto args = ["--a"];
+	Options opt;
+	assertThrown!(Exception)(parseArgs(opt, args));
+}
+
+unittest {
+	import std.exception : assertThrown;
+
+	static struct Embed {
+		@Arg() int b = 2;
+	}
+
+	static struct Options {
+		@Arg() int a = 1;
+		@Arg() Embed embed;
+	}
+
+	auto args = ["--a", "10", "--embed.b", "20"];
+	Options opt;
+	parseArgs(opt, args);
+	assert(opt.a == 10);
+	assert(opt.embed.b == 20);
 }
