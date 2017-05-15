@@ -14,6 +14,7 @@ struct Multiplicity {
 }
 
 struct Argument {
+	bool isArgument = false;
 	string helpMessage;
 	char shortName = '\0';
 	Multiplicity multiplicity;
@@ -21,6 +22,7 @@ struct Argument {
 
 	this(T...)(T args) {
 		static if(T.length > 0) {
+			this.isArgument = true;
 			construct(0, args);
 		}
 	}
@@ -112,8 +114,8 @@ void parseCommandLineArguments(Opt)(ref Opt opt, string prefix, ref string[] arg
 		writeln(args[0]);
 		foreach(optMem; __traits(allMembers, Opt)) {
 			writeln(optMem[0], " ", args.front.indexOf("--") == 0);
-			static if(hasUDA!(optMem, Argument)) {
-				auto optMemArg = getArgs!(optMem);
+			alias optMemArg = getArgs!(__traits(getMember, Opt, optMem));
+			if(optMemArg.isArgument) {
 				if(args.front.indexOf("--") == 0 && args.front.canFind(optMem)) {
 					__traits(getMember, opt, optMem) = 
 						to!(typeof(__traits(getMember, opt, optMem)))(
@@ -121,8 +123,9 @@ void parseCommandLineArguments(Opt)(ref Opt opt, string prefix, ref string[] arg
 						);
 					args = args[2 .. $];
 					continue con;
-				} else if(arg.shortName != '\0' 
-						&& args.front.indexOf("-") == 0 && args.front.canFind(arg.shortName))
+				} else if(optMemArg.shortName != '\0' 
+						&& args.front.indexOf("-") == 0 
+						&& args.front.canFind(optMemArg.shortName))
 				{
 					__traits(getMember, opt, optMem) = 
 						to!(typeof(__traits(getMember, opt, optMem)))(
