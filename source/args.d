@@ -1,6 +1,6 @@
 import args;
 
-import std.typecons : Flag;
+import std.array : front;
 import std.stdio;
 
 enum Optional {
@@ -62,7 +62,7 @@ Argument getArgs(alias T)() {
 }
 
 unittest {
-	@Arg int a;
+	@Arg() int a;
 	Argument arg = getArgs!(a);
 	assert(arg.shortName == '\0');
 	assert(arg.helpMessage == "");
@@ -103,46 +103,45 @@ unittest {
 	assert(arg5.optional == Optional.no);
 }
 
-void parseCommandLineArguments(Opt)(ref Opt opt, string prefix, ref string[] args) {
+bool parseImpl(string mem, Opt)(ref Opt opt, ref string[] args) {
 	import std.traits : hasUDA, getUDAs;
 	import std.algorithm.searching : startsWith, canFind;
 	import std.string : indexOf;
 	import std.conv : to;
-	import std.array : front;
 
-	con: while(args.length) {
-		writeln(args[0]);
-		foreach(optMem; __traits(allMembers, Opt)) {
-			writeln(optMem[0], " ", args.front.indexOf("--") == 0);
-			alias optMemArg = getArgs!(__traits(getMember, Opt, optMem));
-			if(optMemArg.isArgument) {
-				if(args.front.indexOf("--") == 0 && args.front.canFind(optMem)) {
-					__traits(getMember, opt, optMem) = 
-						to!(typeof(__traits(getMember, opt, optMem)))(
-							args[1]
-						);
-					args = args[2 .. $];
-					continue con;
-				} else if(optMemArg.shortName != '\0' 
-						&& args.front.indexOf("-") == 0 
-						&& args.front.canFind(optMemArg.shortName))
-				{
-					__traits(getMember, opt, optMem) = 
-						to!(typeof(__traits(getMember, opt, optMem)))(
-							args[1]
-						);
-					args = args[2 .. $];
-					continue con;
-				}
+	static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
+		Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
+		if((args.front.startsWith("--") && args.front.canFind(mem) )
+				|| (optMemArg.shortName != '\0' 
+					&& args.front.startsWith("-") 
+					&& args.front.canFind(optMemArg.shortName)) )
+		{
+			static if(is(typeof(__traits(getMember, opt, mem)) == bool)) {
+				__traits(getMember, opt, mem) = true;
+			} else {
+				__traits(getMember, opt, mem) = 
+					to!(typeof(__traits(getMember, opt, mem)))(args[1]);
+				args = args[1 .. $];	
 			}
+			args = args[1 .. $];	
+			return true;
 		}
-		throw new Exception("No matching option for '" ~ args[0] ~ "' found");
+	}
+	return false;
+}
+
+void parseCommandLineArguments(Opt)(ref Opt opt, string prefix, ref string[] args) 
+{
+	foreach(optMem; __traits(allMembers, Opt)) {
+		if(!parseImpl!(optMem)(opt, args)) {
+			throw new Exception("No Option for '" ~ args.front ~ "' found");
+		}
 	}
 }
 
 unittest {
 	static struct Options {
-		@Arg int a = 1;
+		@Arg() int a = 1;
 		@Arg("", 'c') int b = 2;
 	}
 
@@ -150,4 +149,5 @@ unittest {
 	Options opt;
 	parseCommandLineArguments(opt, "", args);
 	assert(opt.a == 10);
+	assert(opt.b == 11);
 }
