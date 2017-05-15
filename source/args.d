@@ -106,25 +106,32 @@ unittest {
 bool parseImpl(string mem, Opt)(ref Opt opt, ref string[] args) {
 	import std.traits : hasUDA, getUDAs;
 	import std.algorithm.searching : startsWith, canFind;
+	import std.algorithm.mutation : remove;
 	import std.string : indexOf;
 	import std.conv : to;
 
 	static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 		Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
-		if((args.front.startsWith("--") && args.front.canFind(mem) )
-				|| (optMemArg.shortName != '\0' 
-					&& args.front.startsWith("-") 
-					&& args.front.canFind(optMemArg.shortName)) )
-		{
-			static if(is(typeof(__traits(getMember, opt, mem)) == bool)) {
-				__traits(getMember, opt, mem) = true;
-			} else {
-				__traits(getMember, opt, mem) = 
-					to!(typeof(__traits(getMember, opt, mem)))(args[1]);
-				args = args[1 .. $];	
+		foreach(idx, arg; args) {
+			if((arg.startsWith("--") && arg.canFind(mem) )
+					|| (optMemArg.shortName != '\0' 
+						&& arg.startsWith("-") 
+						&& arg.canFind(optMemArg.shortName)) )
+			{
+				static if(is(typeof(__traits(getMember, opt, mem)) == bool)) {
+					__traits(getMember, opt, mem) = true;
+				} else {
+					if(idx + 1 > args.length) {
+						throw new Exception("Not enough arguments passed for '"
+								~ arg ~ "' arg.");
+					}
+					__traits(getMember, opt, mem) = 
+						to!(typeof(__traits(getMember, opt, mem)))(args[idx + 1]);
+					args = remove(args, idx);
+				}
+				args = remove(args, idx);
+				return true;
 			}
-			args = args[1 .. $];	
-			return true;
 		}
 	}
 	return false;
@@ -143,11 +150,13 @@ unittest {
 	static struct Options {
 		@Arg() int a = 1;
 		@Arg("", 'c') int b = 2;
+		@Arg() bool d;
 	}
 
-	auto args = ["--a", "10", "-c", "11"];
+	auto args = ["--a", "10", "-c", "11", "--d"];
 	Options opt;
 	parseCommandLineArguments(opt, "", args);
 	assert(opt.a == 10);
 	assert(opt.b == 11);
+	assert(opt.d == true);
 }
