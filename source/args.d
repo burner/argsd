@@ -103,39 +103,70 @@ unittest {
 	assert(arg5.optional == Optional.no);
 }
 
+enum ArgsMatch {
+	none,
+	mustBeStruct,
+	complete
+}
+
+ArgsMatch argsMatches(alias Args, string name)(string prefix, string opt) {
+	import stringbuffer;
+	import std.format : formattedWrite;
+	import std.algorithm.searching : startsWith, canFind;
+
+	StringBuffer buf;
+	formattedWrite!"--%s%s"(buf.writer(), prefix, name);
+
+	//writeln(buf.getData(), "' '", prefix, "' '", name, "' '", opt, "'");
+	if(opt.startsWith(buf.getData())) {
+		return opt == buf.getData() ? ArgsMatch.complete :
+			ArgsMatch.mustBeStruct;
+	} else if(Args.shortName == '\0') {
+		return ArgsMatch.none;
+	}
+
+	StringBuffer buf2;
+	formattedWrite!"-%s"(buf2.writer(), Args.shortName);
+
+	if(buf2.getData() == opt) {
+		return ArgsMatch.complete;
+	}
+
+	return ArgsMatch.none;
+}
+
 void parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix, 
 		ref string[] args) 
 {
 	import std.traits : hasUDA, getUDAs;
-	import std.algorithm.searching : startsWith, canFind;
 	import std.algorithm.mutation : remove;
-	import std.string : indexOf;
 	import std.conv : to;
 
 	static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 		Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
 		foreach(idx, arg; args) {
-			if( (arg.startsWith("--") 
-						&& arg.canFind(mem) 
-						&& (prefix.empty || prefix.canFind(prefix)))
-				|| (optMemArg.shortName != '\0' 
-					&& arg.startsWith("-") 
-					&& arg.canFind(optMemArg.shortName)
-					&& (prefix.empty || prefix.canFind(prefix))) )
-			{
+			ArgsMatch matchType = argsMatches!(optMemArg, mem)(prefix, arg);
+			if(matchType == ArgsMatch.mustBeStruct) {
 				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
 					parseArgs(__traits(getMember, opt, mem), mem ~ ".", args);
-				} else static if(is(typeof(__traits(getMember, opt, mem)) == bool)) 
+					return;
+				} else {
+					throw new Exception("Argument '" ~ arg ~ "' was prefix but"
+							~ " '" ~ mem ~ "' was not an embedded struct.");
+				}
+			} else if(matchType.complete) {
+				static if(is(typeof(__traits(getMember, opt, mem)) == bool)) 
 				{
 					__traits(getMember, opt, mem) = true;
 					args = remove(args, idx);
-				} else {
+				} else static if(!is(typeof(__traits(getMember, opt, mem)) == struct)) {
 					if(idx + 1 >= args.length) {
 						throw new Exception("Not enough arguments passed for '"
 								~ arg ~ "' arg.");
 					}
 					__traits(getMember, opt, mem) = 
 						to!(typeof(__traits(getMember, opt, mem)))(args[idx + 1]);
+					args = remove(args, idx);
 					args = remove(args, idx);
 				}
 				return;
@@ -148,6 +179,71 @@ void parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix,
 	}
 }
 
+struct UniqueShort {
+	bool allUnique;
+	char notUniqueChar;
+	bool[128] used;
+}
+
+UniqueShort checkUniqueRecur(Opt)() {
+	import std.traits : hasUDA, getUDAs;
+	UniqueShort ret;
+	foreach(mem; __traits(allMembers, Opt)) {
+		static if(hasUDA!(__traits(getMember, Opt, mem), Argument)) {
+			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
+				enum recur = checkUniqueRecur!(
+						typeof(__traits(getMember, Opt, mem))
+					);
+				static if(recur.allUnique) {
+					foreach(it; recur.used) {
+						if(it && ret.used[it]) {
+							ret.allUnique = false;
+							ret.notUniqueChar = it;	
+							return ret;
+						} else {
+							ret.used[it] = true;
+						}
+					}
+				} else {
+					return recur;
+				}
+			} else {
+				Argument optMemArg = getUDAs!(__traits(getMember, Opt, mem), Argument)[0];
+				if(optMemArg.shortName != '\0' 
+						&& ret.used[optMemArg.shortName])
+				{
+					ret.allUnique = false;
+					ret.notUniqueChar = optMemArg.shortName;
+					return ret;
+				} else if(optMemArg.shortName != '\0') {
+					ret.used[optMemArg.shortName] = true;
+				}
+			}
+		}
+	}
+	ret.allUnique = true;
+	ret.notUniqueChar = ' ';
+	return ret;
+}
+
+void checkUnique(Opt)() {
+	enum unique = checkUniqueRecur!(Opt)();
+	static assert(unique.allUnique, "The option '" ~ unique.notUniqueChar 
+			~ "' was not unique.");
+}
+
+unittest {
+	static struct F {
+		@Arg() int foo;
+	}
+
+	F f;
+	auto args = ["--foo", "10"];
+	parseArgsImpl!("foo")(f, "", args);
+	assert(f.foo == 10);
+	assert(args.length == 0);
+}
+
 void parseArgs(Opt)(ref Opt opt, ref string[] args) 
 {
 	parseArgs(opt, "", args);
@@ -155,6 +251,7 @@ void parseArgs(Opt)(ref Opt opt, ref string[] args)
 
 void parseArgs(Opt)(ref Opt opt, string prefix, ref string[] args) 
 {
+	checkUnique!Opt();
 	foreach(optMem; __traits(allMembers, Opt)) {
 		parseArgsImpl!(optMem)(opt, prefix, args);
 	}
@@ -184,7 +281,9 @@ unittest {
 
 	auto args = ["-c", "11", "--d"];
 	Options opt;
-	assertThrown!(Exception)(parseArgs(opt, args));
+	parseArgs(opt, args);
+	assert(args.length == 1);
+	assert(args[0] == "--d");
 }
 
 unittest {
@@ -216,4 +315,86 @@ unittest {
 	parseArgs(opt, args);
 	assert(opt.a == 10);
 	assert(opt.embed.b == 20);
+}
+
+unittest {
+	import std.exception : assertThrown;
+
+	static struct Options {
+		@Arg() int a = 1;
+		@Arg() int embed;
+	}
+
+	auto args = ["--a", "10", "--embed.b", "20"];
+	Options opt;
+	assertThrown!Exception(parseArgs(opt, args));
+}
+
+unittest {
+	import std.exception : assertThrown;
+
+	enum Enum {
+		yes,
+		no
+	}
+
+	static struct Embed2 {
+		@Arg() Enum e = Enum.yes;
+	}
+
+	static struct Embed {
+		@Arg() Embed2 en2;
+	}
+
+	static struct Options {
+		@Arg() int a = 1;
+		@Arg() Embed en;
+	}
+
+	auto args = ["--a", "10", "--en.en2.e", "yes"];
+	Options opt;
+	parseArgs(opt, args);
+	assert(opt.a == 10);
+	assert(opt.en.en2.e == Enum.yes);
+}
+
+unittest {
+	static struct Option {
+		@Arg('a') int a;
+		@Arg('a') int b;
+	}
+
+	auto args = ["-a", "10"];
+	Option opt;
+	static assert(!__traits(compiles, parseArgs(opt, args)));
+}
+
+unittest {
+	import std.exception : assertThrown;
+
+	enum Enum {
+		yes,
+		no
+	}
+
+	static struct Embed2 {
+		@Arg('b') Enum e = Enum.yes;
+	}
+
+	static struct Embed {
+		@Arg() Embed2 en2;
+	}
+
+	static struct Options {
+		@Arg() int a = 1;
+		@Arg() Embed en;
+	}
+
+	auto args = ["--a", "10", "--en.en2.e", "yes"];
+	Options opt;
+	//static assert(__traits(compiles, parseArgs(opt, args)));
+	auto uni = checkUniqueRecur!(Options)();
+	writefln("%d", cast(int)uni.notUniqueChar);
+	writefln("%(%s %)", uni.used);
+	//parseArgs(opt, args);
 }
