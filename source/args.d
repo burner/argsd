@@ -21,6 +21,7 @@ struct Argument {
 	Optional optional = Optional.yes;
 
 	this(T...)(T args) {
+		this.shortName = '\0';
 		static if(T.length > 0) {
 			this.isArgument = true;
 			construct(0, args);
@@ -180,9 +181,7 @@ void parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix,
 }
 
 struct UniqueShort {
-	bool allUnique;
-	char notUniqueChar;
-	bool[128] used;
+	int[128] used;
 }
 
 UniqueShort checkUniqueRecur(Opt)() {
@@ -194,42 +193,41 @@ UniqueShort checkUniqueRecur(Opt)() {
 				enum recur = checkUniqueRecur!(
 						typeof(__traits(getMember, Opt, mem))
 					);
-				static if(recur.allUnique) {
-					foreach(it; recur.used) {
-						if(it && ret.used[it]) {
-							ret.allUnique = false;
-							ret.notUniqueChar = it;	
-							return ret;
-						} else {
-							ret.used[it] = true;
-						}
-					}
-				} else {
-					return recur;
+				foreach(idx, it; recur.used) {
+					ret.used[idx] += it;
 				}
 			} else {
-				Argument optMemArg = getUDAs!(__traits(getMember, Opt, mem), Argument)[0];
-				if(optMemArg.shortName != '\0' 
-						&& ret.used[optMemArg.shortName])
-				{
-					ret.allUnique = false;
-					ret.notUniqueChar = optMemArg.shortName;
-					return ret;
-				} else if(optMemArg.shortName != '\0') {
-					ret.used[optMemArg.shortName] = true;
+				Argument optMemArg = getUDAs!(
+						__traits(getMember, Opt, mem), Argument
+					)[0];
+				if(optMemArg.shortName != '\0') {
+					ret.used[cast(size_t)optMemArg.shortName]++;
 				}
 			}
 		}
 	}
-	ret.allUnique = true;
-	ret.notUniqueChar = ' ';
 	return ret;
 }
 
 void checkUnique(Opt)() {
+	import std.array : appender;
+	import std.format : formattedWrite;
 	enum unique = checkUniqueRecur!(Opt)();
-	static assert(unique.allUnique, "The option '" ~ unique.notUniqueChar 
-			~ "' was not unique.");
+	bool ok = true;
+	string errMsg;
+	auto app = appender!string();
+	foreach(idx, it; unique.used) {
+		if(it > 1) {
+			formattedWrite(app, 
+					"The short option '%s' was used multiple times.\n",
+					cast(char)idx
+				);
+			ok = false;
+		}
+	}
+	if(!ok) {
+		throw new Exception(app.data);
+	}
 }
 
 unittest {
@@ -359,6 +357,7 @@ unittest {
 }
 
 unittest {
+	import std.exception : assertThrown;
 	static struct Option {
 		@Arg('a') int a;
 		@Arg('a') int b;
@@ -366,7 +365,7 @@ unittest {
 
 	auto args = ["-a", "10"];
 	Option opt;
-	static assert(!__traits(compiles, parseArgs(opt, args)));
+	assertThrown!Exception(parseArgs(opt, args));
 }
 
 unittest {
@@ -386,15 +385,11 @@ unittest {
 	}
 
 	static struct Options {
-		@Arg() int a = 1;
+		@Arg('b') int a = 1;
 		@Arg() Embed en;
 	}
 
 	auto args = ["--a", "10", "--en.en2.e", "yes"];
 	Options opt;
-	//static assert(__traits(compiles, parseArgs(opt, args)));
-	auto uni = checkUniqueRecur!(Options)();
-	writefln("%d", cast(int)uni.notUniqueChar);
-	writefln("%(%s %)", uni.used);
-	//parseArgs(opt, args);
+	assertThrown!Exception(parseArgs(opt, args));
 }
