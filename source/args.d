@@ -126,10 +126,10 @@ ArgsMatch argsMatches(alias Args, string name)(string prefix, string opt) {
 		return ArgsMatch.none;
 	}
 
-	StringBuffer buf2;
-	formattedWrite!"-%s"(buf2.writer(), Args.shortName);
+	buf.removeAll();
+	formattedWrite!"-%s"(buf.writer(), Args.shortName);
 
-	if(buf2.getData() == opt) {
+	if(buf.getData() == opt) {
 		return ArgsMatch.complete;
 	}
 
