@@ -4,14 +4,46 @@ import std.container.array : Array;
 import std.array : empty, front;
 import std.stdio;
 
+bool parseArgs(Opt,Args)(ref Opt opt, ref Args args) 
+{
+	return parseArgs!("--", "-")(opt, "", args);
+}
+
+Array!string parseArgsConfigFile(string filename) {
+	import std.file : readText;
+	import std.algorithm.iteration : splitter;
+	import std.algorithm.searching : startsWith;
+	import std.algorithm.mutation : strip;
+	import std.string : indexOf;
+
+	Array!string ret;
+	ret.insertBack("dummyBecauseTheFirstArgumentIsTheFileName");
+
+	auto file = readText(filename);
+	foreach(line; file.splitter('\n')) {
+		if(line.startsWith('#')) {
+			continue;
+		}
+
+		ptrdiff_t eq = line.indexOf('=');
+		if(eq == -1) {
+			continue;
+		}
+
+		ret.insertBack(line[0 .. eq].strip(' ').strip('"'));
+		ret.insertBack(line[eq+1 .. $].strip(' ').strip('"'));
+	}
+
+	return ret;
+}
+
+void parseConfigFile(Opt,Args)(ref Opt opt, ref Args args) {
+	parseArgs!("", "")(opt, "", args);
+}
+
 enum Optional {
 	yes,
 	no
-}
-
-struct Multiplicity {
-	size_t min;
-	size_t max;
 }
 
 struct Argument {
@@ -138,8 +170,8 @@ ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
 	return ArgsMatch.none;
 }
 
-bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(ref Opt opt, string prefix, 
-		ref Args args) 
+bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
+		ref Opt opt, string prefix, ref Args args) 
 {
 	import std.traits : hasUDA, getUDAs, isArray;
 	import std.algorithm.searching : canFind;
@@ -173,7 +205,8 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(ref Opt opt
 				{
 					__traits(getMember, opt, mem) = true;
 					args = remove(args, idx);
-				} else static if(!is(typeof(__traits(getMember, opt, mem)) == struct)
+				} else static if(
+						!is(typeof(__traits(getMember, opt, mem)) == struct)
 						&& isArray!((typeof(__traits(getMember, opt, mem))))
 				) {
 					if(idx + 1 >= args.length) {
@@ -183,7 +216,9 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(ref Opt opt
 					if(args[idx + 1].canFind(',')) {
 						__traits(getMember, opt, mem) ~= 
 							args[idx + 1].splitter(',')
-							.map!(a => to!(typeof(__traits(getMember, opt, mem)[0]))(a))
+							.map!(a => to!(
+									typeof(__traits(getMember, opt, mem)[0]))(a)
+								)
 							.array;
 					} else {
 						__traits(getMember, opt, mem) ~= 
@@ -194,7 +229,8 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(ref Opt opt
 					args = remove(args, idx);
 					args = remove(args, idx);
 					continue;
-				} else static if(!is(typeof(__traits(getMember, opt, mem)) == struct)
+				} else static if(
+						!is(typeof(__traits(getMember, opt, mem)) == struct)
 						&& !isArray!((typeof(__traits(getMember, opt, mem))))
 				) {
 					if(idx + 1 >= args.length) {
@@ -240,34 +276,6 @@ unittest {
 	a.insertBack([0,1,2,3]);
 	a = remove(a, 1);
 	assert(equal(a[], [0,2,3]));
-}
-
-Array!string parseArgsConfigFile(string filename) {
-	import std.file : readText;
-	import std.algorithm.iteration : splitter;
-	import std.algorithm.searching : startsWith;
-	import std.algorithm.mutation : strip;
-	import std.string : indexOf;
-
-	Array!string ret;
-	ret.insertBack("dummyBecauseTheFirstArgumentIsTheFileName");
-
-	auto file = readText(filename);
-	foreach(line; file.splitter('\n')) {
-		if(line.startsWith('#')) {
-			continue;
-		}
-
-		ptrdiff_t eq = line.indexOf('=');
-		if(eq == -1) {
-			continue;
-		}
-
-		ret.insertBack(line[0 .. eq].strip(' ').strip('"'));
-		ret.insertBack(line[eq+1 .. $].strip(' ').strip('"'));
-	}
-
-	return ret;
 }
 
 struct UniqueShort {
@@ -339,15 +347,6 @@ unittest {
 	assert(f.foo == 10);
 	assert(args.length == 1);
 	assert(args[0] == "funcname");
-}
-
-bool parseArgs(Opt,Args)(ref Opt opt, ref Args args) 
-{
-	return parseArgs!("--", "-")(opt, "", args);
-}
-
-void parseConfigFile(Opt,Args)(ref Opt opt, ref Args args) {
-	parseArgs!("", "")(opt, "", args);
 }
 
 private bool parseArgs(string Long, string Short, Opt, Args)(ref Opt opt, 
