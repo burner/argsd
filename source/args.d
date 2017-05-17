@@ -1,5 +1,6 @@
 import args;
 
+import std.container.array : Array;
 import std.array : empty, front;
 import std.stdio;
 
@@ -109,13 +110,13 @@ enum ArgsMatch {
 	complete
 }
 
-ArgsMatch argsMatches(alias Args, string name)(string prefix, string opt) {
+ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(string prefix, string opt) {
 	import stringbuffer;
 	import std.format : formattedWrite;
 	import std.algorithm.searching : startsWith, canFind;
 
 	StringBuffer buf;
-	formattedWrite!"--%s%s"(buf.writer(), prefix, name);
+	formattedWrite!"%s%s%s"(buf.writer(), Long, prefix, name);
 
 	//writeln(buf.getData(), "' '", prefix, "' '", name, "' '", opt, "'");
 	if(opt.startsWith(buf.getData())) {
@@ -126,7 +127,7 @@ ArgsMatch argsMatches(alias Args, string name)(string prefix, string opt) {
 	}
 
 	buf.removeAll();
-	formattedWrite!"-%s"(buf.writer(), Args.shortName);
+	formattedWrite!"%s%s"(buf.writer(), Short, Args.shortName);
 
 	if(buf.getData() == opt) {
 		return ArgsMatch.complete;
@@ -135,11 +136,14 @@ ArgsMatch argsMatches(alias Args, string name)(string prefix, string opt) {
 	return ArgsMatch.none;
 }
 
-bool parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix, 
-		ref string[] args) 
+bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(ref Opt opt, string prefix, 
+		ref Args args) 
 {
 	import std.traits : hasUDA, getUDAs, isArray;
 	import std.algorithm.mutation : remove;
+	import std.algorithm.searching : canFind;
+	import std.algorithm.iteration : splitter, map;
+	import std.array : array;
 	import std.conv : to;
 
 	static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
@@ -151,7 +155,8 @@ bool parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix,
 				args = remove(args, idx);
 				return true;
 			}
-			ArgsMatch matchType = argsMatches!(optMemArg, mem)(prefix, arg);
+			ArgsMatch matchType = argsMatches!(optMemArg, mem, Long, Short)
+				(prefix, arg);
 			if(matchType == ArgsMatch.mustBeStruct) {
 				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
 					parseArgs(__traits(getMember, opt, mem), mem ~ ".", args);
@@ -172,8 +177,17 @@ bool parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix,
 						throw new Exception("Not enough arguments passed for '"
 								~ arg ~ "' arg.");
 					}
-					__traits(getMember, opt, mem) ~= 
-						to!(typeof(__traits(getMember, opt, mem)[0]))(args[idx + 1]);
+					if(args[idx + 1].canFind(',')) {
+						__traits(getMember, opt, mem) ~= 
+							args[idx + 1].splitter(',')
+							.map!(a => to!(typeof(__traits(getMember, opt, mem)[0]))(a))
+							.array;
+					} else {
+						__traits(getMember, opt, mem) ~= 
+							to!(typeof(__traits(getMember, opt, mem)[0]))(
+								args[idx + 1]
+							);
+					}
 					args = remove(args, idx);
 					args = remove(args, idx);
 					continue;
@@ -200,6 +214,47 @@ bool parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix,
 		}
 	}
 	return false;
+}
+
+private ref Array!T remove(T)(return ref Array!T arr, size_t idx) {
+	auto r = arr[idx .. idx + 1];
+	arr.linearRemove(r);
+	return arr;
+}
+
+unittest {
+	import std.algorithm.comparison : equal;
+
+	Array!int a;
+	a.insertBack([0,1,2,3]);
+	a = remove(a, 1);
+	assert(equal(a[], [0,2,3]));
+}
+
+Array!string parseArgsConfigFile(string filename) {
+	import std.file : readText;
+	import std.algorithm.iteration : splitter;
+	import std.algorithm.comparison : startsWith;
+	import std.string : indexOf;
+
+	Array!string ret;
+
+	auto file = readText(filename);
+	foreach(line, file.splitter('\n')) {
+		if(line.startsWith('#')) {
+			continue;
+		}
+
+		ptrdiff_t eq = line.indexOf('=');
+		if(eq == -1) {
+			continue;
+		}
+
+		ret.insertBack(line[0 .. eq].strip());
+		ret.insertBack(line[eq+1 .. $].strip());
+	}
+
+	return ret;
 }
 
 struct UniqueShort {
@@ -267,7 +322,7 @@ unittest {
 
 	F f;
 	auto args = ["funcname", "--foo", "10"];
-	parseArgsImpl!("foo")(f, "", args);
+	parseArgsImpl!("foo", "--", "-")(f, "", args);
 	assert(f.foo == 10);
 	assert(args.length == 1);
 	assert(args[0] == "funcname");
@@ -285,7 +340,7 @@ private bool parseArgs(Opt)(ref Opt opt, string prefix, ref string[] args)
 	bool helpWanted = false;
 
 	foreach(optMem; __traits(allMembers, Opt)) {
-		helpWanted |= parseArgsImpl!(optMem)(opt, prefix, args);
+		helpWanted |= parseArgsImpl!(optMem, "--", "-")(opt, prefix, args);
 	}
 	return helpWanted;
 }
@@ -461,6 +516,37 @@ unittest {
 		@Arg() Embed en;
 	}
 
+	Options opt;
+	auto data = parseArgsConfigFile("testfile.argsd");
+	parseArgs(opt, data);
+
+	assert(opt.someValue == 100);
+	assert(opt.en.en2.z == Enum.no);
+}
+
+unittest {
+	import std.exception : assertThrown;
+
+	enum Enum {
+		yes,
+		no
+	}
+
+	static struct Embed2 {
+		@Arg('z', "A super long and not helpful help message that should be"
+			~ " very long") 
+		Enum engage = Enum.yes;
+	}
+
+	static struct Embed {
+		@Arg() Embed2 en2;
+	}
+
+	static struct Options {
+		@Arg() int someValue = 1;
+		@Arg() Embed en;
+	}
+
 	auto args = ["funcname", "--someValue", "10", "--en.en2.e", "yes"];
 	Options opt;
 	parseArgs(opt, args);
@@ -490,6 +576,20 @@ unittest {
 	}
 
 	auto args = ["funcname", "--a", "10", "--a", "20"];
+	Option opt;
+	parseArgs(opt, args);
+	assert(equal(opt.a, [10,20]), format("\"%(%s %)\"", opt.a));
+}
+
+unittest {
+	import std.algorithm.comparison : equal;
+	import std.format : format;
+
+	static struct Option {
+		@Arg() int[] a;
+	}
+
+	auto args = ["funcname", "--a", "10,20"];
 	Option opt;
 	parseArgs(opt, args);
 	assert(equal(opt.a, [10,20]), format("\"%(%s %)\"", opt.a));
