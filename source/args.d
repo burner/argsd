@@ -234,13 +234,13 @@ unittest {
 Array!string parseArgsConfigFile(string filename) {
 	import std.file : readText;
 	import std.algorithm.iteration : splitter;
-	import std.algorithm.comparison : startsWith;
-	import std.string : indexOf;
+	import std.algorithm.searching : startsWith;
+	import std.string : indexOf, strip;
 
 	Array!string ret;
 
 	auto file = readText(filename);
-	foreach(line, file.splitter('\n')) {
+	foreach(line; file.splitter('\n')) {
 		if(line.startsWith('#')) {
 			continue;
 		}
@@ -328,12 +328,12 @@ unittest {
 	assert(args[0] == "funcname");
 }
 
-bool parseArgs(Opt)(ref Opt opt, ref string[] args) 
+bool parseArgs(Opt,Args)(ref Opt opt, ref Args args) 
 {
 	return parseArgs(opt, "", args);
 }
 
-private bool parseArgs(Opt)(ref Opt opt, string prefix, ref string[] args) 
+private bool parseArgs(Opt,Args)(ref Opt opt, string prefix, ref Args args) 
 {
 	checkUnique!Opt();
 
