@@ -110,7 +110,9 @@ enum ArgsMatch {
 	complete
 }
 
-ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(string prefix, string opt) {
+ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
+		string prefix, string opt) 
+{
 	import stringbuffer;
 	import std.format : formattedWrite;
 	import std.algorithm.searching : startsWith, canFind;
@@ -118,7 +120,7 @@ ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(string
 	StringBuffer buf;
 	formattedWrite!"%s%s%s"(buf.writer(), Long, prefix, name);
 
-	//writeln(buf.getData(), "' '", prefix, "' '", name, "' '", opt, "'");
+	//writeln("argsMatches ", buf.getData(), "' '", prefix, "' '", opt, "'");
 	if(opt.startsWith(buf.getData())) {
 		return opt == buf.getData() ? ArgsMatch.complete :
 			ArgsMatch.mustBeStruct;
@@ -140,7 +142,6 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(ref Opt opt
 		ref Args args) 
 {
 	import std.traits : hasUDA, getUDAs, isArray;
-	import std.algorithm.mutation : remove;
 	import std.algorithm.searching : canFind;
 	import std.algorithm.iteration : splitter, map;
 	import std.array : array;
@@ -159,7 +160,9 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(ref Opt opt
 				(prefix, arg);
 			if(matchType == ArgsMatch.mustBeStruct) {
 				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
-					parseArgs(__traits(getMember, opt, mem), mem ~ ".", args);
+					parseArgs!(Long, Short)(__traits(getMember, opt, mem), 
+							prefix ~ mem ~ ".", args
+						);
 					return false;
 				} else {
 					throw new Exception("Argument '" ~ arg ~ "' was prefix but"
@@ -216,10 +219,18 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(ref Opt opt
 	return false;
 }
 
-private ref Array!T remove(T)(return ref Array!T arr, size_t idx) {
-	auto r = arr[idx .. idx + 1];
-	arr.linearRemove(r);
-	return arr;
+private ref T remove(T)(return ref T arr, size_t idx) {
+	import std.traits : isArray;
+
+	static if(isArray!T) {
+		import std.algorithm.mutation : remove;
+		arr = remove(arr, idx);
+		return arr;
+	} else {
+		auto r = arr[idx .. idx + 1];
+		arr.linearRemove(r);
+		return arr;
+	}
 }
 
 unittest {
@@ -235,9 +246,11 @@ Array!string parseArgsConfigFile(string filename) {
 	import std.file : readText;
 	import std.algorithm.iteration : splitter;
 	import std.algorithm.searching : startsWith;
-	import std.string : indexOf, strip;
+	import std.algorithm.mutation : strip;
+	import std.string : indexOf;
 
 	Array!string ret;
+	ret.insertBack("dummyBecauseTheFirstArgumentIsTheFileName");
 
 	auto file = readText(filename);
 	foreach(line; file.splitter('\n')) {
@@ -250,8 +263,8 @@ Array!string parseArgsConfigFile(string filename) {
 			continue;
 		}
 
-		ret.insertBack(line[0 .. eq].strip());
-		ret.insertBack(line[eq+1 .. $].strip());
+		ret.insertBack(line[0 .. eq].strip(' ').strip('"'));
+		ret.insertBack(line[eq+1 .. $].strip(' ').strip('"'));
 	}
 
 	return ret;
@@ -330,17 +343,22 @@ unittest {
 
 bool parseArgs(Opt,Args)(ref Opt opt, ref Args args) 
 {
-	return parseArgs(opt, "", args);
+	return parseArgs!("--", "-")(opt, "", args);
 }
 
-private bool parseArgs(Opt,Args)(ref Opt opt, string prefix, ref Args args) 
+void parseConfigFile(Opt,Args)(ref Opt opt, ref Args args) {
+	parseArgs!("", "")(opt, "", args);
+}
+
+private bool parseArgs(string Long, string Short, Opt, Args)(ref Opt opt, 
+		string prefix, ref Args args) 
 {
 	checkUnique!Opt();
 
 	bool helpWanted = false;
 
 	foreach(optMem; __traits(allMembers, Opt)) {
-		helpWanted |= parseArgsImpl!(optMem, "--", "-")(opt, prefix, args);
+		helpWanted |= parseArgsImpl!(optMem, Long, Short)(opt, prefix, args);
 	}
 	return helpWanted;
 }
@@ -495,6 +513,8 @@ unittest {
 
 unittest {
 	import std.exception : assertThrown;
+	import std.format : format;
+	import std.conv : to;
 
 	enum Enum {
 		yes,
@@ -518,10 +538,13 @@ unittest {
 
 	Options opt;
 	auto data = parseArgsConfigFile("testfile.argsd");
-	parseArgs(opt, data);
+	writefln("%(%s %)", data[]);
+	parseConfigFile(opt, data);
 
-	assert(opt.someValue == 100);
-	assert(opt.en.en2.z == Enum.no);
+	assert(opt.someValue == 100, format("%d %(%s %)",
+			opt.someValue, data[]));
+	assert(opt.en.en2.engage == Enum.no, format("%s %(%s %)",
+			opt.en.en2.engage, data[]));
 }
 
 unittest {
