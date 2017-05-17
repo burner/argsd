@@ -21,7 +21,6 @@ struct Argument {
 	Optional optional = Optional.yes;
 
 	this(T...)(T args) {
-		this.shortName = '\0';
 		static if(T.length > 0) {
 			this.isArgument = true;
 			construct(0, args);
@@ -136,31 +135,51 @@ ArgsMatch argsMatches(alias Args, string name)(string prefix, string opt) {
 	return ArgsMatch.none;
 }
 
-void parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix, 
+bool parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix, 
 		ref string[] args) 
 {
-	import std.traits : hasUDA, getUDAs;
+	import std.traits : hasUDA, getUDAs, isArray;
 	import std.algorithm.mutation : remove;
 	import std.conv : to;
 
 	static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 		Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
-		foreach(idx, arg; args) {
+		size_t idx = 1;
+		while(args.length > 1) {
+			auto arg = args[idx];
+			if(arg == "--help" || arg == "-h") {
+				args = remove(args, idx);
+				return true;
+			}
 			ArgsMatch matchType = argsMatches!(optMemArg, mem)(prefix, arg);
 			if(matchType == ArgsMatch.mustBeStruct) {
 				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
 					parseArgs(__traits(getMember, opt, mem), mem ~ ".", args);
-					return;
+					return false;
 				} else {
 					throw new Exception("Argument '" ~ arg ~ "' was prefix but"
 							~ " '" ~ mem ~ "' was not an embedded struct.");
 				}
-			} else if(matchType.complete) {
+			} else if(matchType == ArgsMatch.complete) {
 				static if(is(typeof(__traits(getMember, opt, mem)) == bool)) 
 				{
 					__traits(getMember, opt, mem) = true;
 					args = remove(args, idx);
-				} else static if(!is(typeof(__traits(getMember, opt, mem)) == struct)) {
+				} else static if(!is(typeof(__traits(getMember, opt, mem)) == struct)
+						&& isArray!((typeof(__traits(getMember, opt, mem))))
+				) {
+					if(idx + 1 >= args.length) {
+						throw new Exception("Not enough arguments passed for '"
+								~ arg ~ "' arg.");
+					}
+					__traits(getMember, opt, mem) ~= 
+						to!(typeof(__traits(getMember, opt, mem)[0]))(args[idx + 1]);
+					args = remove(args, idx);
+					args = remove(args, idx);
+					continue;
+				} else static if(!is(typeof(__traits(getMember, opt, mem)) == struct)
+						&& !isArray!((typeof(__traits(getMember, opt, mem))))
+				) {
 					if(idx + 1 >= args.length) {
 						throw new Exception("Not enough arguments passed for '"
 								~ arg ~ "' arg.");
@@ -169,8 +188,10 @@ void parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix,
 						to!(typeof(__traits(getMember, opt, mem)))(args[idx + 1]);
 					args = remove(args, idx);
 					args = remove(args, idx);
+					return false;
 				}
-				return;
+			} else if(matchType == ArgsMatch.none) {
+				return false;
 			}
 		}
 		if(optMemArg.optional == Optional.no) {
@@ -178,6 +199,7 @@ void parseArgsImpl(string mem, Opt)(ref Opt opt, string prefix,
 					~ "' not found.");
 		}
 	}
+	return false;
 }
 
 struct UniqueShort {
@@ -219,12 +241,20 @@ void checkUnique(Opt)() {
 	foreach(idx, it; unique.used) {
 		if(it > 1) {
 			formattedWrite(app, 
-					"The short option '%s' was used multiple times.\n",
-					cast(char)idx
+					"The short option name '%s' was used %d times.\n",
+					cast(char)idx, it
 				);
 			ok = false;
 		}
 	}
+
+	if(unique.used[cast(size_t)'h'] == 1) {
+		formattedWrite(app, 
+				"The short option name 'h' are not allowed as they are "
+				~ "reservered the help dialog.\n");
+		ok = false;
+	}
+
 	if(!ok) {
 		throw new Exception(app.data);
 	}
@@ -236,23 +266,87 @@ unittest {
 	}
 
 	F f;
-	auto args = ["--foo", "10"];
+	auto args = ["funcname", "--foo", "10"];
 	parseArgsImpl!("foo")(f, "", args);
 	assert(f.foo == 10);
-	assert(args.length == 0);
+	assert(args.length == 1);
+	assert(args[0] == "funcname");
 }
 
-void parseArgs(Opt)(ref Opt opt, ref string[] args) 
+bool parseArgs(Opt)(ref Opt opt, ref string[] args) 
 {
-	parseArgs(opt, "", args);
+	return parseArgs(opt, "", args);
 }
 
-void parseArgs(Opt)(ref Opt opt, string prefix, ref string[] args) 
+private bool parseArgs(Opt)(ref Opt opt, string prefix, ref string[] args) 
 {
 	checkUnique!Opt();
+
+	bool helpWanted = false;
+
 	foreach(optMem; __traits(allMembers, Opt)) {
-		parseArgsImpl!(optMem)(opt, prefix, args);
+		helpWanted |= parseArgsImpl!(optMem)(opt, prefix, args);
 	}
+	return helpWanted;
+}
+
+void printArgsHelp(Opt)(ref const(Opt) opt, string header) {
+	import std.stdio : stdout;
+	auto ltw = stdout.lockingTextWriter();
+	printArgsHelp(opt, ltw, header);
+}
+
+void printArgsHelp(Opt, LTW)(ref const(Opt) opt, ref LTW ltw, string header) {
+	import std.format : formattedWrite;		
+	formattedWrite(ltw, "%s\n", header);
+
+	printArgsHelpImpl(opt, ltw, "");
+}
+
+private void printArgsHelpImpl(Opt, LTW)(ref const(Opt) opt, ref LTW ltw, string prefix) {
+	import std.traits : hasUDA, getUDAs, Unqual;
+	import std.format : formattedWrite;		
+	foreach(mem; __traits(allMembers, Opt)) {
+		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
+			Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
+			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
+				printArgsHelpImpl(__traits(getMember, opt, mem), ltw, mem ~ ".");
+			} else {
+				if(optMemArg.shortName != '\0') {
+					formattedWrite(ltw, "-%s   ", optMemArg.shortName);
+				} else {
+					formattedWrite(ltw, "     ");
+				}
+				formattedWrite(ltw, "%-20s Type: %-10s default: %-15s", 
+						"--" ~ prefix ~ mem, Unqual!(typeof(__traits(getMember, opt, mem))).stringof,
+						__traits(getMember, opt, mem)
+					);
+				printHelpMessage(ltw, optMemArg);
+			}
+		}
+	}
+}
+
+private void printHelpMessage(LTW)(ref LTW ltw, ref const(Argument) optMemArg) {
+	import std.format : formattedWrite;		
+	formattedWrite(ltw, "%5s", "Help: ");
+	int curLength;
+	foreach(dchar it; optMemArg.helpMessage) {
+		if(it == '\n' || it == '\t') {
+			formattedWrite(ltw, "%s", ' ');
+			++curLength;
+			continue;
+		}
+		if(it == ' ' && curLength > 20) {
+			formattedWrite(ltw, "\n");
+			formattedWrite(ltw, "%73s", " ");
+			curLength = 0;
+			continue;
+		}
+		formattedWrite(ltw, "%s", it);
+		++curLength;
+	}
+	formattedWrite(ltw, "\n");
 }
 
 unittest {
@@ -262,7 +356,7 @@ unittest {
 		@Arg() bool d;
 	}
 
-	auto args = ["--a", "10", "-c", "11", "--d"];
+	auto args = ["funcname", "--a", "10", "-c", "11", "--d"];
 	Options opt;
 	parseArgs(opt, args);
 	assert(opt.a == 10);
@@ -272,16 +366,32 @@ unittest {
 
 unittest {
 	import std.exception : assertThrown;
+	import std.conv : to;
 
 	static struct Options {
 		@Arg(Optional.no) int a = 1;
 	}
 
-	auto args = ["-c", "11", "--d"];
+	auto args = ["funcname", "--a", "11", "--d"];
 	Options opt;
 	parseArgs(opt, args);
-	assert(args.length == 1);
-	assert(args[0] == "--d");
+	assert(args.length == 2, to!string(args.length));
+	assert(args[0] == "funcname");
+	assert(args[1] == "--d");
+}
+
+unittest {
+	import std.exception : assertThrown;
+	import std.conv : to;
+
+	static struct Options {
+		@Arg(Optional.no) int a = 1;
+	}
+
+	auto args = ["funcname"];
+	Options opt;
+	assertThrown!Exception(parseArgs(opt, args));
+	assert(args.length == 1, to!string(args.length));
 }
 
 unittest {
@@ -291,7 +401,7 @@ unittest {
 		@Arg() int a = 1;
 	}
 
-	auto args = ["--a"];
+	auto args = ["funcname", "--a"];
 	Options opt;
 	assertThrown!(Exception)(parseArgs(opt, args));
 }
@@ -308,7 +418,7 @@ unittest {
 		@Arg() Embed embed;
 	}
 
-	auto args = ["--a", "10", "--embed.b", "20"];
+	auto args = ["funcname", "--a", "10", "--embed.b", "20"];
 	Options opt;
 	parseArgs(opt, args);
 	assert(opt.a == 10);
@@ -323,7 +433,7 @@ unittest {
 		@Arg() int embed;
 	}
 
-	auto args = ["--a", "10", "--embed.b", "20"];
+	auto args = ["funcname", "--a", "10", "--embed.b", "20"];
 	Options opt;
 	assertThrown!Exception(parseArgs(opt, args));
 }
@@ -337,7 +447,9 @@ unittest {
 	}
 
 	static struct Embed2 {
-		@Arg() Enum e = Enum.yes;
+		@Arg('z', "A super long and not helpful help message that should be"
+			~ " very long") 
+		Enum engage = Enum.yes;
 	}
 
 	static struct Embed {
@@ -345,15 +457,16 @@ unittest {
 	}
 
 	static struct Options {
-		@Arg() int a = 1;
+		@Arg() int someValue = 1;
 		@Arg() Embed en;
 	}
 
-	auto args = ["--a", "10", "--en.en2.e", "yes"];
+	auto args = ["funcname", "--someValue", "10", "--en.en2.e", "yes"];
 	Options opt;
 	parseArgs(opt, args);
-	assert(opt.a == 10);
-	assert(opt.en.en2.e == Enum.yes);
+	assert(opt.someValue == 10);
+	assert(opt.en.en2.engage == Enum.yes);
+	printArgsHelp(opt, "Some info");
 }
 
 unittest {
@@ -363,9 +476,23 @@ unittest {
 		@Arg('a') int b;
 	}
 
-	auto args = ["-a", "10"];
+	auto args = ["funcname", "-a", "10"];
 	Option opt;
 	assertThrown!Exception(parseArgs(opt, args));
+}
+
+unittest {
+	import std.algorithm.comparison : equal;
+	import std.format : format;
+
+	static struct Option {
+		@Arg() int[] a;
+	}
+
+	auto args = ["funcname", "--a", "10", "--a", "20"];
+	Option opt;
+	parseArgs(opt, args);
+	assert(equal(opt.a, [10,20]), format("\"%(%s %)\"", opt.a));
 }
 
 unittest {
@@ -377,7 +504,8 @@ unittest {
 	}
 
 	static struct Embed2 {
-		@Arg('b') Enum e = Enum.yes;
+		@Arg('b') 
+		Enum e = Enum.yes;
 	}
 
 	static struct Embed {
@@ -389,7 +517,7 @@ unittest {
 		@Arg() Embed en;
 	}
 
-	auto args = ["--a", "10", "--en.en2.e", "yes"];
+	auto args = ["funcname", "--a", "10", "--en.en2.e", "yes"];
 	Options opt;
 	assertThrown!Exception(parseArgs(opt, args));
 }
