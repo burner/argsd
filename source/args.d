@@ -50,7 +50,6 @@ struct Argument {
 	bool isArgument = false;
 	string helpMessage;
 	char shortName = '\0';
-	Multiplicity multiplicity;
 	Optional optional = Optional.yes;
 
 	this(T...)(T args) {
@@ -66,8 +65,6 @@ struct Argument {
 			this.helpMessage = args[0];
 		} else static if(isSomeChar!(T[0])) {
 			this.shortName = args[0];
-		} else static if(is(T[0] == Multiplicity)) {
-			this.multiplicity = args[0];
 		} else static if(is(T[0] == Optional)) {
 			this.optional = args[0];
 		}
@@ -87,7 +84,6 @@ Argument getArgs(alias T)() {
 	static if(hasUDA!(T, Argument)) {
 		return Argument(getUDAs!(T, Argument)[0].helpMessage, 
 				getUDAs!(T, Argument)[0].shortName,
-			 	getUDAs!(T, Argument)[0].multiplicity,
 				getUDAs!(T, Argument)[0].optional);
 	} else {
 		return Argument();
@@ -99,40 +95,30 @@ unittest {
 	Argument arg = getArgs!(a);
 	assert(arg.shortName == '\0');
 	assert(arg.helpMessage == "");
-	assert(arg.multiplicity.min == 0);
-	assert(arg.multiplicity.max == 0);
 	assert(arg.optional == Optional.yes);
 
 	@Arg("", 'b') int b;
 	Argument arg2 = getArgs!(b);
 	assert(arg2.shortName == 'b');
 	assert(arg2.helpMessage == "");
-	assert(arg2.multiplicity.min == 0);
-	assert(arg2.multiplicity.max == 0);
 	assert(arg2.optional == Optional.yes);
 
 	@Arg("helpMe", 'b') int c;
 	Argument arg3 = getArgs!(c);
 	assert(arg3.shortName == 'b');
 	assert(arg3.helpMessage == "helpMe");
-	assert(arg3.multiplicity.min == 0);
-	assert(arg3.multiplicity.max == 0);
 	assert(arg3.optional == Optional.yes);
 
-	@Arg("helpMe", 'b', Multiplicity(10,20)) int d;
+	@Arg("helpMe", 'b') int d;
 	Argument arg4 = getArgs!(d);
 	assert(arg4.shortName == 'b');
 	assert(arg4.helpMessage == "helpMe");
-	assert(arg4.multiplicity.min == 10);
-	assert(arg4.multiplicity.max == 20);
 	assert(arg4.optional == Optional.yes);
 
-	@Arg("helpMe", 'b', Optional.no, Multiplicity(10,20)) int e;
+	@Arg("helpMe", 'b', Optional.no) int e;
 	Argument arg5 = getArgs!(e);
 	assert(arg5.shortName == 'b');
 	assert(arg5.helpMessage == "helpMe");
-	assert(arg5.multiplicity.min == 10);
-	assert(arg5.multiplicity.max == 20);
 	assert(arg5.optional == Optional.no);
 }
 
