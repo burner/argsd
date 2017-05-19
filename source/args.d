@@ -382,23 +382,49 @@ size_t typeWidth(Opt)() {
 	}
 	return ret;
 }
+
+size_t defaultWidth(Opt)(const ref Opt opt) @safe {
+	import std.traits : hasUDA, Unqual;
+	import std.algorithm.comparison : max;
+	import stringbuffer;
+	import std.format : formattedWrite;
+	StringBuffer buf;
+	size_t ret;
+	foreach(mem; __traits(allMembers, Opt)) {
+		static if(hasUDA!(__traits(getMember, Opt, mem), Argument)) {
+			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
+				auto s = defaultWidth!(typeof(__traits(getMember, Opt, mem)))
+					(__traits(getMember, opt, mem));
+				ret = max(ret, s);
+			} else {
+				buf.removeAll();
+				formattedWrite(buf.writer(), "%s", __traits(getMember, opt,
+							mem));
+				ret = max(ret, buf.length);
+			}
+		}
+	}
+	return ret;
+}
+
 void printArgsHelp(Opt)(ref const(Opt) opt, string header) {
 	import std.stdio : stdout;
 	auto ltw = stdout.lockingTextWriter();
-	printArgsHelp(opt, ltw, header);
+	printArgsHelp(ltw, opt, header);
 }
 
-void printArgsHelp(Opt, LTW)(ref const(Opt) opt, ref LTW ltw, string header) {
+void printArgsHelp(LTW, Opt)(ref LTW ltw, ref const(Opt) opt, string header) {
 	import std.format : formattedWrite;		
 	formattedWrite(ltw, "%s\n", header);
 
-	enum longLength = longOptionsWidth!(Opt)("");
-	enum typeLength = typeWidth!(Opt)();
-	printArgsHelpImpl!(longLength + 4, typeLength)(opt, ltw, "");
+	enum lLength = longOptionsWidth!(Opt)("");
+	enum tLength = typeWidth!(Opt)();
+	auto dLength = defaultWidth!(Opt)(opt) + 2;
+	printArgsHelpImpl!(lLength + 4, tLength + 2)(opt, ltw, dLength, "");
 }
 
 private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
-		ref const(Opt) opt, ref LTW ltw, string prefix) 
+		ref const(Opt) opt, ref LTW ltw, const size_t dLength, string prefix) 
 {
 	import std.traits : hasUDA, getUDAs, Unqual;
 	import std.format : formattedWrite;		
@@ -406,39 +432,46 @@ private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 			Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
 			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
-				printArgsHelpImpl!(longLength, typeLength)(__traits(getMember, opt, mem), ltw, mem ~ ".");
+				printArgsHelpImpl!(longLength, typeLength)(__traits(getMember, opt, mem), 
+						ltw, dLength, mem ~ ".");
 			} else {
 				if(optMemArg.shortName != '\0') {
 					formattedWrite(ltw, "-%s   ", optMemArg.shortName);
 				} else {
 					formattedWrite(ltw, "     ");
 				}
-				formattedWrite(ltw, "%-*s Type: %-*s default: %-15s",
-						longLength,
-						"--" ~ prefix ~ mem, 
+				formattedWrite(ltw, "%-*s Type: %-*s default: %-*s",
+						longLength, "--" ~ prefix ~ mem, 
 						typeLength, 
 						Unqual!(typeof(__traits(getMember, opt, mem))).stringof,
-						__traits(getMember, opt, mem)
+						dLength, __traits(getMember, opt, mem)
 					);
-				printHelpMessage(ltw, optMemArg);
+				printHelpMessage(ltw, optMemArg, 
+						longLength + typeLength + dLength
+					);
 			}
 		}
 	}
 }
 
-private void printHelpMessage(LTW)(ref LTW ltw, ref const(Argument) optMemArg) {
+private void printHelpMessage(LTW)(ref LTW ltw, ref const(Argument) optMemArg,
+		const size_t beforeLength) 
+{
 	import std.format : formattedWrite;		
 	formattedWrite(ltw, "%5s", "Help: ");
 	int curLength;
+	enum staticOffset = 28;
+	immutable helpStartLength = (beforeLength + staticOffset);
+	immutable helpBreakLength = 100 - helpStartLength;
 	foreach(dchar it; optMemArg.helpMessage) {
 		if(it == '\n' || it == '\t') {
 			formattedWrite(ltw, "%s", ' ');
 			++curLength;
 			continue;
 		}
-		if(it == ' ' && curLength > 20) {
+		if(it == ' ' && curLength > helpBreakLength) {
 			formattedWrite(ltw, "\n");
-			formattedWrite(ltw, "%73s", " ");
+			formattedWrite(ltw, "%*s", helpStartLength, " ");
 			curLength = 0;
 			continue;
 		}
@@ -461,6 +494,20 @@ unittest {
 	assert(opt.a == 10);
 	assert(opt.b == 11);
 	assert(opt.d == true);
+}
+
+unittest {
+	static struct Options {
+		@Arg() int a = 1;
+		@Arg("", 'c') int b = 2;
+		@Arg() bool d;
+	}
+
+	Options opt;
+	auto args = [["funcname", "-h"], ["funcname", "--help"]];
+	foreach(arg; args) {
+		assert(parseArgs(opt, arg));
+	}
 }
 
 unittest {
@@ -575,6 +622,8 @@ unittest {
 
 unittest {
 	import std.exception : assertThrown;
+	import stringbuffer;
+	import std.format : format;
 
 	enum Enum {
 		yes,
@@ -592,16 +641,29 @@ unittest {
 	}
 
 	static struct Options {
-		@Arg() int someValue = 1;
+		@Arg() int someValueABCDEF = 1;
 		@Arg() Embed en;
 	}
 
-	auto args = ["funcname", "--someValue", "10", "--en.en2.e", "yes"];
+	auto args = ["funcname", "--someValueABCDEF", "10", "--en.en2.e", "yes"];
 	Options opt;
 	parseArgs(opt, args);
-	assert(opt.someValue == 10);
+	assert(opt.someValueABCDEF == 10);
 	assert(opt.en.en2.engage == Enum.yes);
-	printArgsHelp(opt, "Some info");
+
+	StringBuffer buf;
+	auto w = buf.writer();
+	printArgsHelp(w, opt, "Some info");
+
+	string expected =
+`Some info
+     --someValueABCDEF   Type: int    default: 10   Help: 
+-z   --en2.engage        Type: Enum   default: yes  Help: A super long and not helpful help message that
+                                                          should be very long
+`;
+	assert(buf.getData() == expected,
+		format("\n'%s'\n '%s'", buf.getData(), expected)
+	);
 }
 
 unittest {
