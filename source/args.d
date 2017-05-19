@@ -348,6 +348,40 @@ private bool parseArgs(string Long, string Short, Opt, Args)(ref Opt opt,
 	return helpWanted;
 }
 
+size_t longOptionsWidth(Opt)(string prefix = "") {
+	import std.traits : hasUDA;
+	import std.algorithm.comparison : max;
+	size_t ret;
+	foreach(mem; __traits(allMembers, Opt)) {
+		static if(hasUDA!(__traits(getMember, Opt, mem), Argument)) {
+			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
+				enum s = longOptionsWidth!(typeof(__traits(getMember, Opt, mem)))(mem ~ ".");
+				ret = max(ret, s);
+			} else {
+				ret = max(ret, mem.length);
+			}
+		}
+	}
+	return ret;
+}
+
+size_t typeWidth(Opt)() {
+	import std.traits : hasUDA, Unqual;
+	import std.algorithm.comparison : max;
+	size_t ret;
+	foreach(mem; __traits(allMembers, Opt)) {
+		static if(hasUDA!(__traits(getMember, Opt, mem), Argument)) {
+			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
+				enum s = typeWidth!(typeof(__traits(getMember, Opt, mem)))();
+				ret = max(ret, s);
+			} else {
+				enum memLen = Unqual!(typeof(__traits(getMember, Opt, mem))).stringof.length;
+				ret = max(ret, memLen);
+			}
+		}
+	}
+	return ret;
+}
 void printArgsHelp(Opt)(ref const(Opt) opt, string header) {
 	import std.stdio : stdout;
 	auto ltw = stdout.lockingTextWriter();
@@ -358,25 +392,32 @@ void printArgsHelp(Opt, LTW)(ref const(Opt) opt, ref LTW ltw, string header) {
 	import std.format : formattedWrite;		
 	formattedWrite(ltw, "%s\n", header);
 
-	printArgsHelpImpl(opt, ltw, "");
+	enum longLength = longOptionsWidth!(Opt)("");
+	enum typeLength = typeWidth!(Opt)();
+	printArgsHelpImpl!(longLength + 4, typeLength)(opt, ltw, "");
 }
 
-private void printArgsHelpImpl(Opt, LTW)(ref const(Opt) opt, ref LTW ltw, string prefix) {
+private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
+		ref const(Opt) opt, ref LTW ltw, string prefix) 
+{
 	import std.traits : hasUDA, getUDAs, Unqual;
 	import std.format : formattedWrite;		
 	foreach(mem; __traits(allMembers, Opt)) {
 		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 			Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
 			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
-				printArgsHelpImpl(__traits(getMember, opt, mem), ltw, mem ~ ".");
+				printArgsHelpImpl!(longLength, typeLength)(__traits(getMember, opt, mem), ltw, mem ~ ".");
 			} else {
 				if(optMemArg.shortName != '\0') {
 					formattedWrite(ltw, "-%s   ", optMemArg.shortName);
 				} else {
 					formattedWrite(ltw, "     ");
 				}
-				formattedWrite(ltw, "%-20s Type: %-10s default: %-15s", 
-						"--" ~ prefix ~ mem, Unqual!(typeof(__traits(getMember, opt, mem))).stringof,
+				formattedWrite(ltw, "%-*s Type: %-*s default: %-15s",
+						longLength,
+						"--" ~ prefix ~ mem, 
+						typeLength, 
+						Unqual!(typeof(__traits(getMember, opt, mem))).stringof,
 						__traits(getMember, opt, mem)
 					);
 				printHelpMessage(ltw, optMemArg);
