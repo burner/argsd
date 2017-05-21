@@ -33,6 +33,7 @@ bool parseArgsWithConfigFile(Opt,Args)(ref Opt opt, ref Args args) {
 
 unittest {
 	import std.format : format;
+	import std.file : exists, remove;
 
 	static struct Embed {
 		@Arg() int b = 2;
@@ -43,20 +44,26 @@ unittest {
 		@Arg() Embed embed;
 	}
 
+	string cfilename = "configfile.argsd";
+
 	{
 		Options options;
-		auto args = ["funcname", "--genConfig", "configfile.argsd"];
+		auto args = ["funcname", "--genConfig", cfilename];
 		assert(!parseArgsWithConfigFile(options, args));
 	}
 	{
 		Options options;
 		options.a = 20;
 		options.embed.b = 30;
-		auto args = ["funcname", "--config", "configfile.argsd"];
+		auto args = ["funcname", "--config", cfilename];
 		assert(!parseArgsWithConfigFile(options, args));
 		assert(options.a == 1, format("%s", options.a));
 		assert(options.embed.b == 2);
 	}
+
+	assert(exists(cfilename));
+	remove(cfilename);
+	assert(!exists(cfilename));
 }
 
 void writeConfigToFile(Opt)(string filename, ref Opt opt) {
