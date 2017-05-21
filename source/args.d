@@ -9,6 +9,103 @@ bool parseArgs(Opt,Args)(ref Opt opt, ref Args args)
 	return parseArgs!("--", "-")(opt, "", args);
 }
 
+struct ConfigFile {
+	@Arg() string config;
+	@Arg() string genConfig;
+}
+
+bool parseArgsWithConfigFile(Opt,Args)(ref Opt opt, ref Args args) {
+	ConfigFile cf;
+	bool helpWanted = parseArgs(cf, args);
+
+	if(!cf.genConfig.empty) {
+		writeConfigToFile(cf.genConfig, opt);
+	}
+
+	if(!cf.config.empty) {
+		auto fromFile = parseArgsConfigFile(cf.config);
+		parseConfigFile(opt, fromFile);
+	}
+
+	bool tmp = parseArgs(opt, args);
+	return tmp || helpWanted;
+}
+
+unittest {
+	import std.format : format;
+
+	static struct Embed {
+		@Arg() int b = 2;
+	}
+
+	static struct Options {
+		@Arg() int a = 1;
+		@Arg() Embed embed;
+	}
+
+	{
+		Options options;
+		auto args = ["funcname", "--genConfig", "configfile.argsd"];
+		assert(!parseArgsWithConfigFile(options, args));
+	}
+	{
+		Options options;
+		options.a = 20;
+		options.embed.b = 30;
+		auto args = ["funcname", "--config", "configfile.argsd"];
+		assert(!parseArgsWithConfigFile(options, args));
+		assert(options.a == 1, format("%s", options.a));
+		assert(options.embed.b == 2);
+	}
+}
+
+void writeConfigToFile(Opt)(string filename, ref Opt opt) {
+	import std.stdio : File;
+	auto f = File(filename, "w");
+	auto ltw = f.lockingTextWriter();
+	writeConfigToFileImpl(opt, ltw, "");
+}
+
+void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
+	import std.traits : hasUDA, getUDAs, Unqual;
+	import std.format : formattedWrite;		
+	foreach(mem; __traits(allMembers, Opt)) {
+		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
+			Argument optMemArg = getUDAs!(
+					__traits(getMember, opt, mem), Argument
+				)[0];
+			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
+				writeConfigToFileImpl(__traits(getMember, opt, mem), 
+						ltw, mem ~ ".");
+			} else {
+				printHelpMessageConfig!(typeof(__traits(getMember, Opt, mem)))(
+						ltw, optMemArg
+					);
+				formattedWrite(ltw, "%s%s = \"%s\"\n",
+						prefix, mem, __traits(getMember, opt, mem)
+					);
+			}
+		}
+	}
+}
+
+void printHelpMessageConfig(Type,LTW)(ref LTW ltw, ref const(Argument) arg) {
+	import std.format : formattedWrite;
+	import std.traits : Unqual;
+
+	formattedWrite(ltw, "\n# ");
+	foreach(dchar it; arg.helpMessage) {
+		if(it == '\n' || it == '\t') {
+			formattedWrite(ltw, "%s", ' ');
+			continue;
+		} else {
+			formattedWrite(ltw, "%s", it);
+		}
+	}
+
+	formattedWrite(ltw, "\n# Type: %s\n", Type.stringof);
+}
+
 Array!string parseArgsConfigFile(string filename) {
 	import std.file : readText;
 	import std.algorithm.iteration : splitter;
@@ -159,9 +256,10 @@ ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
 bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
 		ref Opt opt, string prefix, ref Args args) 
 {
-	import std.traits : hasUDA, getUDAs, isArray;
+	import std.traits : hasUDA, getUDAs, isArray, isSomeString;
 	import std.algorithm.searching : canFind;
 	import std.algorithm.iteration : splitter, map;
+	import std.range : ElementEncodingType;
 	import std.array : array;
 	import std.conv : to;
 
@@ -199,18 +297,25 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
 						throw new Exception("Not enough arguments passed for '"
 								~ arg ~ "' arg.");
 					}
-					if(args[idx + 1].canFind(',')) {
-						__traits(getMember, opt, mem) ~= 
-							args[idx + 1].splitter(',')
-							.map!(a => to!(
-									typeof(__traits(getMember, opt, mem)[0]))(a)
-								)
-							.array;
-					} else {
-						__traits(getMember, opt, mem) ~= 
-							to!(typeof(__traits(getMember, opt, mem)[0]))(
+					static if(isSomeString!(typeof(__traits(getMember, opt, mem))))
+					{
+						__traits(getMember, opt, mem) =
+							to!(typeof(__traits(getMember, opt, mem)))(
 								args[idx + 1]
 							);
+					} else {
+						alias ToType = typeof(__traits(getMember, opt, mem)[0]);
+						if(args[idx + 1].canFind(',')) {
+							__traits(getMember, opt, mem) ~= 
+								args[idx + 1].splitter(',')
+								.map!(a => to!(ToType)(a))
+								.array;
+						} else {
+							__traits(getMember, opt, mem) ~= 
+								to!(ToType)(
+									args[idx + 1]
+								);
+						}
 					}
 					args = remove(args, idx);
 					args = remove(args, idx);
