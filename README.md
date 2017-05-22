@@ -1,4 +1,6 @@
 # args
+![alt text](https://travis-ci.org/burner/argsd.svg?branch=master)
+
 A command line and config file parser for DLang
 
 ```D
