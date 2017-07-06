@@ -372,7 +372,7 @@ ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
 	import std.algorithm.searching : startsWith, canFind;
 
 	StringBuffer buf;
-	formattedWrite!"%s%s%s"(buf.writer(), Long, prefix, name);
+	formattedWrite(buf.writer(), "%s%s%s", Long, prefix, name);
 
 	//writeln("argsMatches ", buf.getData(), "' '", prefix, "' '", opt, "'");
 	if(opt.startsWith(buf.getData())) {
@@ -383,7 +383,7 @@ ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
 	}
 
 	buf.removeAll();
-	formattedWrite!"%s%s"(buf.writer(), Short, Args.shortName);
+	formattedWrite(buf.writer(), "%s%s", Short, Args.shortName);
 
 	if(buf.getData() == opt) {
 		return ArgsMatch.complete;
