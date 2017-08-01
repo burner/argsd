@@ -624,7 +624,7 @@ size_t longOptionsWidth(Opt)(string prefix = "") {
 			}
 		}
 	}
-	return ret;
+	return ret + prefix.length;
 }
 
 size_t typeWidth(Opt)() {
@@ -669,62 +669,96 @@ size_t defaultWidth(Opt)(const ref Opt opt) @safe {
 	return ret;
 }
 
-void printArgsHelp(Opt)(ref const(Opt) opt, string header) {
+void printArgsHelp(Opt)(ref const(Opt) opt, string header, const(size_t)
+		termWidth = getTerminalWidth()) 
+{
 	import std.stdio : stdout;
 	auto ltw = stdout.lockingTextWriter();
-	printArgsHelp(ltw, opt, header);
+	printArgsHelp(ltw, opt, header, termWidth);
 }
 
-void printArgsHelp(LTW, Opt)(ref LTW ltw, ref const(Opt) opt, string header) {
+void printArgsHelp(LTW, Opt)(ref LTW ltw, ref const(Opt) opt, string header,
+		const(size_t) termWidth = getTerminalWidth()) 
+{
 	import std.format : formattedWrite;		
 	formattedWrite(ltw, "%s\n", header);
 
 	enum lLength = longOptionsWidth!(Opt)("");
 	enum tLength = typeWidth!(Opt)();
 	auto dLength = defaultWidth!(Opt)(opt) + 2;
-	printArgsHelpImpl!(lLength + 4, tLength + 2)(opt, ltw, dLength, "");
+	printArgsHelpImpl!(lLength + 4, tLength + 2)(opt, ltw, dLength, "", 
+			termWidth
+		);
 }
 
 private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
-		ref const(Opt) opt, ref LTW ltw, const size_t dLength, string prefix) 
+		ref const(Opt) opt, ref LTW ltw, const size_t dLength, string prefix,
+		const(size_t) termWidth) 
 {
-	import std.traits : hasUDA, getUDAs, Unqual;
+	import std.traits : hasUDA, getUDAs, Unqual, isArray, isSomeString;
 	import std.format : formattedWrite;		
+	import stringbuffer;
 	foreach(mem; __traits(allMembers, Opt)) {
 		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 			Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
 			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
 				printArgsHelpImpl!(longLength, typeLength)(__traits(getMember, opt, mem), 
-						ltw, dLength, mem ~ ".");
+						ltw, dLength, mem ~ ".", termWidth);
 			} else {
 				if(optMemArg.shortName != '\0') {
 					formattedWrite(ltw, "-%s   ", optMemArg.shortName);
 				} else {
 					formattedWrite(ltw, "     ");
 				}
-				formattedWrite(ltw, "%-*s Type: %-*s default: %-*s",
+				formattedWrite(ltw, "%-*s Type: %-*s ",
 						longLength, "--" ~ prefix ~ mem, 
 						typeLength, 
 						Unqual!(typeof(__traits(getMember, opt, mem))).stringof,
-						dLength, __traits(getMember, opt, mem)
 					);
+				alias ArgType = Unqual!(typeof(__traits(getMember, opt, mem)));
+				static if(isArray!(ArgType) && !isSomeString!(ArgType)) {
+					StringBuffer arrBuf;
+					formattedWrite(arrBuf.writer(), "[%(%s, %)]", 
+							__traits(getMember, opt, mem)
+						);
+					formattedWrite(ltw, "default: %-*s",
+							dLength, arrBuf.getData()
+						);
+				} else {
+					formattedWrite(ltw, "default: %-*s",
+							dLength, __traits(getMember, opt, mem)
+						);
+				}
 				printHelpMessage(ltw, optMemArg, 
-						longLength + typeLength + dLength
+						longLength + typeLength + dLength, termWidth
 					);
 			}
 		}
 	}
 }
 
+private size_t getTerminalWidth() {
+	version(Posix) {
+		import core.sys.posix.sys.ioctl;
+		winsize w;
+		ioctl(0, TIOCGWINSZ, &w);
+		return w.ws_col;
+	} else {
+		return 100u;
+	}
+}
+
 private void printHelpMessage(LTW)(ref LTW ltw, ref const(Argument) optMemArg,
-		const size_t beforeLength) 
+		const size_t beforeLength, const(size_t) termWidth) 
 {
 	import std.format : formattedWrite;		
+	import std.stdio;
 	formattedWrite(ltw, "%5s", "Help: ");
 	int curLength;
 	enum staticOffset = 28;
 	immutable helpStartLength = (beforeLength + staticOffset);
-	immutable helpBreakLength = 100 - helpStartLength;
+	//writeln(termWidth);
+	immutable helpBreakLength = termWidth - helpStartLength;
 	foreach(dchar it; optMemArg.helpMessage) {
 		if(it == '\n' || it == '\t') {
 			formattedWrite(ltw, "%s", ' ');
@@ -938,7 +972,7 @@ unittest {
 
 	StringBuffer buf;
 	auto w = buf.writer();
-	printArgsHelp(w, opt, "Some info");
+	printArgsHelp(w, opt, "Some info", 100);
 
 	string expected =
 `Some info
