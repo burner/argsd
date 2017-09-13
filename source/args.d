@@ -732,6 +732,11 @@ private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 				printHelpMessage(ltw, optMemArg, 
 						longLength + typeLength + dLength, termWidth
 					);
+				static if(is(typeof(__traits(getMember, opt, mem)) == enum)) {
+					printEnumValues!(LTW, typeof(__traits(getMember, opt, mem)))(
+							ltw, longLength + typeLength + dLength
+						);
+				}
 			}
 		}
 	}
@@ -748,11 +753,23 @@ private size_t getTerminalWidth() {
 	}
 }
 
+private void printEnumValues(LTW,Opt)(ref LTW ltw, const(size_t) beforeLength) {
+	import std.format : formattedWrite;		
+	import std.traits : EnumMembers;
+	enum staticOffset = 44;
+	immutable helpStartLength = (beforeLength + staticOffset);
+	formattedWrite(ltw, "%*s", helpStartLength, "Possible values:");
+	foreach(it; EnumMembers!(Opt)) {
+		formattedWrite(ltw, "\n%*s", helpStartLength, it);
+	}
+	formattedWrite(ltw, "\n");
+}
+
 private void printHelpMessage(LTW)(ref LTW ltw, ref const(Argument) optMemArg,
 		const size_t beforeLength, const(size_t) termWidth) 
 {
 	import std.format : formattedWrite;		
-	import std.stdio;
+	//import std.stdio;
 	formattedWrite(ltw, "%5s", "Help: ");
 	int curLength;
 	enum staticOffset = 28;
@@ -914,7 +931,7 @@ unittest {
 	}
 
 	static struct Embed2 {
-		@Arg('z', "A super long and not helpful help message that should be"
+		@Arg('z', "A super long and not helpful help message that should be\n"
 			~ " very long") 
 		Enum engage = Enum.yes;
 	}
@@ -979,6 +996,9 @@ unittest {
      --someValueABCDEF   Type: int    default: 10   Help: 
 -z   --en2.engage        Type: Enum   default: yes  Help: A super long and not helpful help message that
                                                           should be very long
+                                                          Possible values:
+                                                                       yes
+                                                                        no
 `;
 	assert(buf.getData() == expected,
 		format("\n'%s'\n '%s'", buf.getData(), expected)
