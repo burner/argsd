@@ -206,7 +206,7 @@ void writeConfigToFile(Opt)(string filename, ref Opt opt) {
 }
 
 void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
-	import std.traits : hasUDA, getUDAs, Unqual, isArray, isSomeString;
+	import std.traits : hasUDA, getUDAs, Unqual, isArray, isSomeString, isConvertibleToString;
 	import std.format : formattedWrite;	
 	import std.array;
 	foreach(mem; __traits(allMembers, Opt)) {
@@ -222,7 +222,7 @@ void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
 						ltw, optMemArg
 					);
 				alias ArgType = Unqual!(typeof(__traits(getMember, opt, mem)));
-				static if(isArray!(ArgType) && !isSomeString!(ArgType)) {
+				static if(isArray!(ArgType) && isSomeString!(ArgType) && isConvertibleToString!(ArgType)) {
 					string[] optArr = __traits(getMember, opt, mem);
 					string def = optArr[0];
 					// special case: string[]
