@@ -206,8 +206,9 @@ void writeConfigToFile(Opt)(string filename, ref Opt opt) {
 }
 
 void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
-	import std.traits : hasUDA, getUDAs, Unqual;
-	import std.format : formattedWrite;		
+	import std.traits : hasUDA, getUDAs, Unqual, isArray, isSomeString;
+	import std.format : formattedWrite;	
+	import std.array;
 	foreach(mem; __traits(allMembers, Opt)) {
 		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 			Argument optMemArg = getUDAs!(
@@ -220,9 +221,19 @@ void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
 				printHelpMessageConfig!(typeof(__traits(getMember, Opt, mem)))(
 						ltw, optMemArg
 					);
-				formattedWrite(ltw, "%s%s = \"%s\"\n",
+				alias ArgType = Unqual!(typeof(__traits(getMember, opt, mem)));
+				static if(isArray!(ArgType) && !isSomeString!(ArgType)) {
+					string[] optArr = __traits(getMember, opt, mem);
+					string def = optArr[0];
+					// special case: string[]
+					formattedWrite(ltw, "%s%s = \"%s\"\n", 
+							prefix, mem, def
+					);
+				} else {
+					formattedWrite(ltw, "%s%s = \"%s\"\n",
 						prefix, mem, __traits(getMember, opt, mem)
 					);
+				}
 			}
 		}
 	}
