@@ -206,7 +206,7 @@ void writeConfigToFile(Opt)(string filename, ref Opt opt) {
 }
 
 void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
-	import std.traits : hasUDA, getUDAs, Unqual, isArray, isSomeString, isNarrowString;
+	import std.traits : hasUDA, getUDAs;
 	import std.format : formattedWrite;	
 	import std.array;
 	foreach(mem; __traits(allMembers, Opt)) {
@@ -1084,7 +1084,6 @@ unittest {
 }
 
 unittest {
-	import std.stdio;
 
 	static struct Options {
 		@Arg('s') string[] strings = ["arg1"];
