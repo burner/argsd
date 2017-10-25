@@ -206,8 +206,9 @@ void writeConfigToFile(Opt)(string filename, ref Opt opt) {
 }
 
 void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
-	import std.traits : hasUDA, getUDAs, Unqual;
-	import std.format : formattedWrite;		
+	import std.traits : hasUDA, getUDAs;
+	import std.format : formattedWrite;	
+	import std.array;
 	foreach(mem; __traits(allMembers, Opt)) {
 		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 			Argument optMemArg = getUDAs!(
@@ -220,9 +221,19 @@ void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
 				printHelpMessageConfig!(typeof(__traits(getMember, Opt, mem)))(
 						ltw, optMemArg
 					);
-				formattedWrite(ltw, "%s%s = \"%s\"\n",
+				string[] testArr;
+				static if (is(typeof(testArr) == typeof(__traits(getMember, opt, mem)))) {
+					string[] optArr = __traits(getMember, opt, mem);
+					string def = optArr[0];
+					// special case: string[]
+					formattedWrite(ltw, "%s%s = \"%s\"\n", 
+							prefix, mem, def
+					);
+				} else {
+					formattedWrite(ltw, "%s%s = \"%s\"\n",
 						prefix, mem, __traits(getMember, opt, mem)
 					);
+				}
 			}
 		}
 	}
@@ -1070,4 +1081,47 @@ unittest {
 	auto args = ["funcname", "--a", "10", "--en.en2.e", "yes"];
 	Options opt;
 	assertThrown!Exception(parseArgs(opt, args));
+}
+
+unittest {
+
+	static struct Options {
+		@Arg('s') string[] strings = ["arg1"];
+	}
+
+	Options opt;
+
+	ref Options configWriteable() {
+		return opt;
+	}
+
+	ref const(Options) config() {
+		return opt;
+	}
+
+	// test command line arguments
+	auto args = ["progname", "-s", "arg2", "--strings", "arg3"];
+	assert(!parseArgsWithConfigFile(opt, args));
+
+	const string[] strArr = config().strings;
+	assert(strArr[0] == "arg1");
+	assert(strArr[1] == "arg2");
+	assert(strArr[2] == "arg3");
+
+	// test config file parsing
+	import std.file : remove;
+
+	Options opt2;
+	writeConfigToFile("stringTest.conf", opt2);
+	auto data = parseArgsConfigFile("stringTest.conf");
+	parseConfigFile(opt2, data);
+	remove("stringTest.conf");
+
+
+	// there should be two equal elements (arg1):
+	// 1. the one set as default in the declaration of struct Options
+	// 2. the one which has been read from the config file written in 1.
+	assert(opt2.strings.length == 2);
+	assert(opt2.strings[0] == "arg1");
+	assert(opt2.strings[1] == "arg1");
 }
