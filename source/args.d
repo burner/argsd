@@ -1109,10 +1109,14 @@ unittest {
 	assert(strArr[2] == "arg3");
 
 	// test config file parsing
+	import std.file : remove;
+
 	Options opt2;
 	writeConfigToFile("stringTest.conf", opt2);
 	auto data = parseArgsConfigFile("stringTest.conf");
 	parseConfigFile(opt2, data);
+	remove("stringTest.conf");
+
 
 	// there should be two equal elements (arg1):
 	// 1. the one set as default in the declaration of struct Options
