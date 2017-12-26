@@ -648,7 +648,8 @@ size_t typeWidth(Opt)() {
 				enum s = typeWidth!(typeof(__traits(getMember, Opt, mem)))();
 				ret = max(ret, s);
 			} else {
-				enum memLen = Unqual!(typeof(__traits(getMember, Opt, mem))).stringof.length;
+				enum memLen = ArgsUnqual!(typeof(__traits(getMember, Opt, mem)))
+					.length;
 				ret = max(ret, memLen);
 			}
 		}
@@ -702,6 +703,26 @@ void printArgsHelp(LTW, Opt)(ref LTW ltw, ref const(Opt) opt, string header,
 		);
 }
 
+string ArgsUnqual(T)() {
+	import std.traits : Unqual, isArray;
+	import std.range.primitives : ElementType;
+	static if(isArray!(T)) {
+		return ArgsUnqual!(ElementType!(T))() ~ "[]";
+	} else {
+		return Unqual!(T).stringof;
+	}
+}
+
+unittest {
+	import std.traits : Unqual;
+	enum Foo {
+		a,
+		b
+	}
+
+	assert(ArgsUnqual!(Foo[]) == "Foo[]");
+}
+
 private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 		ref const(Opt) opt, ref LTW ltw, const size_t dLength, string prefix,
 		const(size_t) termWidth) 
@@ -724,7 +745,8 @@ private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 				formattedWrite(ltw, "%-*s Type: %-*s ",
 						longLength, "--" ~ prefix ~ mem, 
 						typeLength, 
-						Unqual!(typeof(__traits(getMember, opt, mem))).stringof,
+						//Unqual!(typeof(__traits(getMember, opt, mem))).stringof,
+						ArgsUnqual!(typeof(__traits(getMember, opt, mem))),
 					);
 				alias ArgType = Unqual!(typeof(__traits(getMember, opt, mem)));
 				static if(isArray!(ArgType) && !isSomeString!(ArgType)) {
@@ -745,6 +767,15 @@ private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 					);
 				static if(is(typeof(__traits(getMember, opt, mem)) == enum)) {
 					printEnumValues!(LTW, typeof(__traits(getMember, opt, mem)))(
+							ltw, longLength + typeLength + dLength
+						);
+				} else static if(isArray!(typeof(__traits(getMember, opt, mem)))
+						&& is(ElementType!(
+							typeof(__traits(getMember, opt, mem))) == enum
+						))
+				{
+					printEnumValues!(LTW, ElementType!(
+								typeof(__traits(getMember, opt, mem))))(
 							ltw, longLength + typeLength + dLength
 						);
 				}
@@ -990,6 +1021,7 @@ unittest {
 	static struct Options {
 		@Arg() int someValueABCDEF = 1;
 		@Arg() Embed en;
+		@Arg() Enum[] arr;
 	}
 
 	auto args = ["funcname", "--someValueABCDEF", "10", "--en.en2.e", "yes"];
