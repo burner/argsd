@@ -714,13 +714,17 @@ string ArgsUnqual(T)() {
 }
 
 unittest {
-	import std.traits : Unqual;
+	import std.traits : Unqual, isArray;
+	import std.range : ElementEncodingType;
 	enum Foo {
 		a,
 		b
 	}
 
 	assert(ArgsUnqual!(Foo[]) == "Foo[]");
+	static assert(isArray!(Foo[]));
+	assert(is(ElementEncodingType!(Foo[]) == enum));
+	static assert(isArray!(Foo[]) && is(ElementEncodingType!(Foo[]) == enum));
 }
 
 private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
@@ -765,17 +769,16 @@ private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 				printHelpMessage(ltw, optMemArg, 
 						longLength + typeLength + dLength, termWidth
 					);
-				static if(is(typeof(__traits(getMember, opt, mem)) == enum)) {
-					printEnumValues!(LTW, typeof(__traits(getMember, opt, mem)))(
+				static if(is(ArgType == enum)) {
+					printEnumValues!(LTW, ArgType)(
 							ltw, longLength + typeLength + dLength
 						);
-				} else static if(isArray!(typeof(__traits(getMember, opt, mem)))
-						&& is(ElementType!(
-							typeof(__traits(getMember, opt, mem))) == enum
-						))
+				} else static if(isArray!(ArgType)
+						&& is(ElementEncodingType!(ArgType) == enum)
+					)
 				{
-					printEnumValues!(LTW, ElementType!(
-								typeof(__traits(getMember, opt, mem))))(
+					printEnumValues!(LTW, 
+							ElementEncodingType!(ArgType))(
 							ltw, longLength + typeLength + dLength
 						);
 				}
