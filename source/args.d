@@ -733,6 +733,7 @@ private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 {
 	import std.traits : hasUDA, getUDAs, Unqual, isArray, isSomeString;
 	import std.format : formattedWrite;		
+	import std.range.primitives : ElementEncodingType;
 	import stringbuffer;
 	foreach(mem; __traits(allMembers, Opt)) {
 		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
