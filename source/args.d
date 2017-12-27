@@ -1040,12 +1040,16 @@ unittest {
 
 	string expected =
 `Some info
-     --someValueABCDEF   Type: int    default: 10   Help: 
--z   --en2.engage        Type: Enum   default: yes  Help: A super long and not helpful help message that
-                                                          should be very long
-                                                          Possible values:
-                                                                       yes
-                                                                        no
+     --someValueABCDEF   Type: int      default: 10   Help: 
+-z   --en2.engage        Type: Enum     default: yes  Help: A super long and not helpful help message
+                                                            that should be very long
+                                                            Possible values:
+                                                                         yes
+                                                                          no
+     --arr               Type: Enum[]   default: []   Help: 
+                                                            Possible values:
+                                                                         yes
+                                                                          no
 `;
 	assert(buf.getData() == expected,
 		format("\n'%s'\n '%s'", buf.getData(), expected)
@@ -1120,7 +1124,6 @@ unittest {
 }
 
 unittest {
-
 	static struct Options {
 		@Arg('s') string[] strings = ["arg1"];
 	}
@@ -1160,4 +1163,32 @@ unittest {
 	assert(opt2.strings.length == 2);
 	assert(opt2.strings[0] == "arg1");
 	assert(opt2.strings[1] == "arg1");
+}
+
+unittest {
+	import std.exception : assertThrown;
+
+	enum Enum {
+		yes,
+		no
+	}
+
+	static struct Embed2 {
+		@Arg('c') 
+		Enum e = Enum.yes;
+	}
+
+	static struct Embed {
+		@Arg() Embed2 en2;
+	}
+
+	static struct Options {
+		@Arg('b') int a = 1;
+		@Arg() Embed en;
+	}
+
+	auto args = ["funcname", "-c", "no"];
+	Options opt;
+	parseArgs(opt, args);
+	assert(opt.en.en2.e == Enum.no);
 }
