@@ -381,6 +381,7 @@ ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
 	import stringbuffer;
 	import std.format : formattedWrite;
 	import std.algorithm.searching : startsWith, canFind;
+	//import std.stdio;
 
 	StringBuffer buf;
 	formattedWrite(buf.writer(), "%s%s%s", Long, prefix, name);
@@ -389,18 +390,32 @@ ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
 	if(opt.startsWith(buf.getData())) {
 		return opt == buf.getData() ? ArgsMatch.complete :
 			ArgsMatch.mustBeStruct;
-	} else if(Args.shortName == '\0') {
+	} 
+
+	if(Args.shortName == '\0') {
 		return ArgsMatch.none;
 	}
 
 	buf.removeAll();
 	formattedWrite(buf.writer(), "%s%s", Short, Args.shortName);
+	//writeln("argsMatches short ", buf.getData(), "' '", prefix, "' '", opt, "'");
 
 	if(buf.getData() == opt) {
 		return ArgsMatch.complete;
 	}
 
 	return ArgsMatch.none;
+}
+
+private bool isShort(string str) @safe pure {
+	return str.length == 2 && str[0] == '-' && str[1] != '-';
+}
+
+unittest {
+	assert(isShort("-a"));
+	assert(!isShort("-"));
+	assert(!isShort("--"));
+	assert(!isShort(""));
 }
 
 private bool isBool(string str) @safe pure {
@@ -435,17 +450,7 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
 			}
 			ArgsMatch matchType = argsMatches!(optMemArg, mem, Long, Short)
 				(prefix, arg);
-			if(matchType == ArgsMatch.mustBeStruct) {
-				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
-					parseArgs!(Long, Short)(__traits(getMember, opt, mem), 
-							prefix ~ mem ~ ".", args
-						);
-					return false;
-				} else {
-					throw new Exception("Argument '" ~ arg ~ "' was prefix but"
-							~ " '" ~ mem ~ "' was not an embedded struct.");
-				}
-			} else if(matchType == ArgsMatch.complete) {
+			if(matchType == ArgsMatch.complete) {
 				static if(is(typeof(__traits(getMember, opt, mem)) == bool)) 
 				{
 					if(idx + 1 < args.length && isBool(args[idx + 1])) {
@@ -501,6 +506,26 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
 					args = remove(args, idx);
 					matched = true;
 					return false;
+				}
+			} else if(isShort(arg)) {
+				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
+					parseArgs!(Long, Short)(__traits(getMember, opt, mem), 
+							prefix ~ mem ~ ".", args
+						);
+					return false;
+				} else {
+					++idx;
+					continue;
+				}
+			} else if(matchType == ArgsMatch.mustBeStruct) {
+				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
+					parseArgs!(Long, Short)(__traits(getMember, opt, mem), 
+							prefix ~ mem ~ ".", args
+						);
+					return false;
+				} else {
+					throw new Exception("Argument '" ~ arg ~ "' was prefix but"
+							~ " '" ~ mem ~ "' was not an embedded struct.");
 				}
 			} else if(matchType == ArgsMatch.none) {
 				++idx;
@@ -1166,7 +1191,8 @@ unittest {
 }
 
 unittest {
-	import std.exception : assertThrown;
+	import std.stdio;
+	//writeln(__LINE__);
 
 	enum Enum {
 		yes,
@@ -1176,6 +1202,9 @@ unittest {
 	static struct Embed2 {
 		@Arg('c') 
 		Enum e = Enum.yes;
+
+		@Arg('d')
+		int hello = 10;
 	}
 
 	static struct Embed {
@@ -1187,8 +1216,10 @@ unittest {
 		@Arg() Embed en;
 	}
 
-	auto args = ["funcname", "-c", "no"];
+	auto args = ["funcname", "-c", "no", "-b", "2", "-d", "22"];
 	Options opt;
 	parseArgs(opt, args);
+	assert(opt.a == 2);
 	assert(opt.en.en2.e == Enum.no);
+	assert(opt.en.en2.hello == 22);
 }
