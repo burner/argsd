@@ -1232,10 +1232,10 @@ unittest {
 		d
 	}
 	static struct Options {
-		@Arg() E[] en;
+		@Arg('t') E[] en;
 	}
 
-	auto args = ["funcname", "--en", "a", "--en", "b"];
+	auto args = ["funcname", "--en", "a", "-t", "b"];
 	Options opt;
 	parseArgs(opt, args);
 	assert(opt.en.length == 2);
