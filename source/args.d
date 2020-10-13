@@ -1048,9 +1048,11 @@ unittest {
 }
 
 @trusted unittest {
+	import std.algorithm.iteration : splitter;
+	import std.array : appender, array;
 	import std.exception : assertThrown;
-	import std.array : appender;
 	import std.format : format;
+	import std.string : stripRight;
 
 	enum Enum {
 		yes,
@@ -1095,9 +1097,20 @@ unittest {
                                                                          yes
                                                                           no
 `;
-	assert(buf.data == expected,
-		format("\n'%s'\n'%s'", buf.data, expected)
-	);
+
+	assert(buf.data.length != expected.length,
+		format("\n'%s'\n'%s'\n%s == %s", buf.data, expected, buf.data.length,
+			expected.length));
+
+	string[] rslt = buf.data.splitter("\n").array;
+
+	size_t idx;
+
+	foreach(line; expected.splitter("\n")) {
+		assert(line.stripRight() == rslt[idx].stripRight(),
+				format("\n%s\n%s", line, rslt[idx]));
+		++idx;
+	}
 }
 
 unittest {
