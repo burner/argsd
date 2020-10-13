@@ -3,6 +3,7 @@ sudo: false
 
 matrix:
   include:
+    - d: dmd
     - d: dmd-2.070.2
     - d: dmd-2.071.2
     - d: dmd-2.072.0
@@ -10,6 +11,7 @@ matrix:
     - d: dmd-2.073.0
     - d: dmd-2.074.0
     - d: dmd-beta
+    - d: ldc
     - d: ldc-1.0.0
     - d: ldc-1.1.0-beta6
 

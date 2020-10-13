@@ -1255,3 +1255,22 @@ unittest {
 	assert(opt.en.en2.e == Enum.no);
 	assert(opt.en.en2.hello == 22);
 }
+
+unittest {
+	enum E {
+		a,
+		b,
+		c,
+		d
+	}
+	static struct Options {
+		@Arg('t') E[] en;
+	}
+
+	auto args = ["funcname", "--en", "a", "-t", "b"];
+	Options opt;
+	parseArgs(opt, args);
+	assert(opt.en.length == 2);
+	assert(opt.en[0] == E.a);
+	assert(opt.en[1] == E.b);
+}
