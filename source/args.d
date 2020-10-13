@@ -3,7 +3,9 @@ import args;
 import std.container.array : Array;
 import std.array : empty, front;
 
-unittest {
+@safe:
+
+@safe unittest {
 	/** argsd arguments are structures as shown below.
 	Each argument that should be searched for needs to have $(D @Arg())
 	attached to it.
@@ -37,7 +39,7 @@ unittest {
 
 	If $(D parseArgsWithConfigFile) is used two more long names are reserved,
 	"--config", and "--genConfig". Both take a $(D string) as argument.
-	"--config filename" will try to parse the file with name $(I filename) and 
+	"--config filename" will try to parse the file with name $(I filename) and
 	assign the values in that file to the argument struct passed.
 
 	"--genConfig filename" can be used to create a config file with
@@ -71,11 +73,14 @@ unittest {
 		  "nested.".
 		*/
 		@Arg() NestedArguments nested;
+
+		@Arg('c', "Some good doc", Optional.no) string c;
 	}
 
 	import std.algorithm.comparison : equal;
 	import std.format : format;
 	import std.math : approxEqual;
+	import std.array : appender;
 
 	/** It is good practice to have the arguments write-protected by default.
 	The following three declarations show a possible implementation.
@@ -99,13 +104,14 @@ unittest {
 	/** This $(D string[]) serves as an example of what would be passed to the
 	$(D main) function from the command line.
 	*/
-	string[] args = ["./executablename", 
-		"--nested.someBool", 
+	string[] args = ["./executablename",
+		"--nested.someBool",
 		"--nested.someFloatValue", "12.34",
 		"--testValues", "10",
-		"-b", "11,12", 
-		"--nested.enumArg", "many", 
-		"--inputFilename", "nice.d"];
+		"-b", "11,12",
+		"--nested.enumArg", "many",
+		"--inputFilename", "nice.d",
+		"-c", "aaa"];
 
 	/** Populates the argument struct returned from configWriteable with the
 	values passed in $(D args).
@@ -128,6 +134,9 @@ unittest {
 		printArgsHelp(config(), "A text explaining the program");
 	}
 
+	auto app = appender!string();
+	printArgsHelp(app, config(), "A text explaining the program");
+
 	/** Here it is tested if the parsing of $(D args) was successful. */
 	assert(equal(config().testValues, [10,11,12]));
 	assert(config().nested.enumArg == NestedEnumArgument.many);
@@ -136,8 +145,7 @@ unittest {
 	assert(config().inputFilename == "nice.d");
 }
 
-bool parseArgs(Opt,Args)(ref Opt opt, ref Args args) 
-{
+bool parseArgs(Opt,Args)(ref Opt opt, ref Args args) {
 	return parseArgs!("--", "-")(opt, "", args);
 }
 
@@ -146,7 +154,7 @@ struct ConfigFile {
 	@Arg() string genConfig;
 }
 
-bool parseArgsWithConfigFile(Opt,Args)(ref Opt opt, ref Args args) {
+bool parseArgsWithConfigFile(Opt,Args)(ref Opt opt, ref Args args) @trusted {
 	ConfigFile cf;
 	bool helpWanted = parseArgs(cf, args);
 
@@ -198,16 +206,16 @@ unittest {
 	assert(!exists(cfilename));
 }
 
-void writeConfigToFile(Opt)(string filename, ref Opt opt) {
+void writeConfigToFile(Opt)(string filename, ref Opt opt) @safe {
 	import std.stdio : File;
 	auto f = File(filename, "w");
 	auto ltw = f.lockingTextWriter();
 	writeConfigToFileImpl(opt, ltw, "");
 }
 
-void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
+void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) @safe {
 	import std.traits : hasUDA, getUDAs;
-	import std.format : formattedWrite;	
+	import std.format : formattedWrite;
 	import std.array;
 	foreach(mem; __traits(allMembers, Opt)) {
 		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
@@ -215,7 +223,7 @@ void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
 					__traits(getMember, opt, mem), Argument
 				)[0];
 			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
-				writeConfigToFileImpl(__traits(getMember, opt, mem), 
+				writeConfigToFileImpl(__traits(getMember, opt, mem),
 						ltw, mem ~ ".");
 			} else {
 				printHelpMessageConfig!(typeof(__traits(getMember, Opt, mem)))(
@@ -226,7 +234,7 @@ void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
 					string[] optArr = __traits(getMember, opt, mem);
 					string def = optArr[0];
 					// special case: string[]
-					formattedWrite(ltw, "%s%s = \"%s\"\n", 
+					formattedWrite(ltw, "%s%s = \"%s\"\n",
 							prefix, mem, def
 					);
 				} else {
@@ -239,7 +247,7 @@ void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) {
 	}
 }
 
-void printHelpMessageConfig(Type,LTW)(ref LTW ltw, ref const(Argument) arg) {
+void printHelpMessageConfig(Type,LTW)(ref LTW ltw, ref const(Argument) arg) @safe {
 	import std.format : formattedWrite;
 	import std.traits : Unqual;
 
@@ -256,7 +264,7 @@ void printHelpMessageConfig(Type,LTW)(ref LTW ltw, ref const(Argument) arg) {
 	formattedWrite(ltw, "\n# Type: %s\n", Type.stringof);
 }
 
-Array!string parseArgsConfigFile(string filename) {
+Array!string parseArgsConfigFile(string filename) @trusted {
 	import std.file : readText;
 	import std.algorithm.iteration : splitter;
 	import std.algorithm.searching : startsWith;
@@ -299,14 +307,14 @@ struct Argument {
 	char shortName = '\0';
 	Optional optional = Optional.yes;
 
-	this(T...)(T args) {
+	this(T...)(T args) @safe {
 		static if(T.length > 0) {
 			this.isArgument = true;
 			construct(0, args);
 		}
 	}
 
-	void construct(T...)(T args) {
+	void construct(T...)(T args) @safe {
 		import std.traits : isSomeString, isSomeChar;
 		static if(isSomeString!(T[0])) {
 			this.helpMessage = args[0];
@@ -329,7 +337,7 @@ Argument Arg(T...)(T args) {
 Argument getArgs(alias T)() {
 	import std.traits : hasUDA, getUDAs;
 	static if(hasUDA!(T, Argument)) {
-		return Argument(getUDAs!(T, Argument)[0].helpMessage, 
+		return Argument(getUDAs!(T, Argument)[0].helpMessage,
 				getUDAs!(T, Argument)[0].shortName,
 				getUDAs!(T, Argument)[0].optional);
 	} else {
@@ -337,7 +345,7 @@ Argument getArgs(alias T)() {
 	}
 }
 
-unittest {
+@safe unittest {
 	@Arg() int a;
 	Argument arg = getArgs!(a);
 	assert(arg.shortName == '\0');
@@ -376,31 +384,31 @@ enum ArgsMatch {
 }
 
 ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
-		string prefix, string opt) 
+		string prefix, string opt) @safe
 {
-	import stringbuffer;
+	import std.array : Appender, appender;
 	import std.format : formattedWrite;
 	import std.algorithm.searching : startsWith, canFind;
 	//import std.stdio;
 
-	StringBuffer buf;
-	formattedWrite(buf.writer(), "%s%s%s", Long, prefix, name);
+	Appender!string buf = appender!string();
+	formattedWrite(buf, "%s%s%s", Long, prefix, name);
 
 	//writeln("argsMatches ", buf.getData(), "' '", prefix, "' '", opt, "'");
-	if(opt.startsWith(buf.getData())) {
-		return opt == buf.getData() ? ArgsMatch.complete :
+	if(opt.startsWith(buf.data)) {
+		return opt == buf.data ? ArgsMatch.complete :
 			ArgsMatch.mustBeStruct;
-	} 
+	}
 
 	if(Args.shortName == '\0') {
 		return ArgsMatch.none;
 	}
 
-	buf.removeAll();
-	formattedWrite(buf.writer(), "%s%s", Short, Args.shortName);
+	buf = appender!string();
+	formattedWrite(buf, "%s%s", Short, Args.shortName);
 	//writeln("argsMatches short ", buf.getData(), "' '", prefix, "' '", opt, "'");
 
-	if(buf.getData() == opt) {
+	if(buf.data == opt) {
 		return ArgsMatch.complete;
 	}
 
@@ -428,7 +436,7 @@ private bool isBool(string str) @safe pure {
 }
 
 bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
-		ref Opt opt, string prefix, ref Args args) 
+		ref Opt opt, string prefix, ref Args args)
 {
 	import std.traits : hasUDA, getUDAs, isArray, isSomeString;
 	import std.algorithm.searching : canFind;
@@ -445,21 +453,27 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
 		while(args.length > 1 && idx < args.length) {
 			auto arg = args[idx];
 			if(arg == "--help" || arg == "-h") {
-				args = remove(args, idx);
+				() @trusted {
+					args = remove(args, idx);
+				}();
 				return true;
 			}
 			ArgsMatch matchType = argsMatches!(optMemArg, mem, Long, Short)
 				(prefix, arg);
 			if(matchType == ArgsMatch.complete) {
-				static if(is(typeof(__traits(getMember, opt, mem)) == bool)) 
+				static if(is(typeof(__traits(getMember, opt, mem)) == bool))
 				{
 					if(idx + 1 < args.length && isBool(args[idx + 1])) {
 						__traits(getMember, opt, mem) = to!bool(args[idx + 1]);
-						args = remove(args, idx);
+						() @trusted {
+							args = remove(args, idx);
+						}();
 					} else {
 						__traits(getMember, opt, mem) = true;
 					}
-					args = remove(args, idx);
+					() @trusted {
+						args = remove(args, idx);
+					}();
 				} else static if(
 						!is(typeof(__traits(getMember, opt, mem)) == struct)
 						&& isArray!((typeof(__traits(getMember, opt, mem))))
@@ -477,19 +491,21 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
 					} else {
 						alias ToType = typeof(__traits(getMember, opt, mem)[0]);
 						if(args[idx + 1].canFind(',')) {
-							__traits(getMember, opt, mem) ~= 
+							__traits(getMember, opt, mem) ~=
 								args[idx + 1].splitter(',')
 								.map!(a => to!(ToType)(a))
 								.array;
 						} else {
-							__traits(getMember, opt, mem) ~= 
+							__traits(getMember, opt, mem) ~=
 								to!(ToType)(
 									args[idx + 1]
 								);
 						}
 					}
-					args = remove(args, idx);
-					args = remove(args, idx);
+					() @trusted {
+						args = remove(args, idx);
+						args = remove(args, idx);
+					}();
 					matched = true;
 					continue;
 				} else static if(
@@ -500,16 +516,18 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
 						throw new Exception("Not enough arguments passed for '"
 								~ arg ~ "' arg.");
 					}
-					__traits(getMember, opt, mem) = 
+					__traits(getMember, opt, mem) =
 						to!(typeof(__traits(getMember, opt, mem)))(args[idx + 1]);
-					args = remove(args, idx);
-					args = remove(args, idx);
+					() @trusted {
+						args = remove(args, idx);
+						args = remove(args, idx);
+					}();
 					matched = true;
 					return false;
 				}
 			} else if(isShort(arg)) {
 				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
-					parseArgs!(Long, Short)(__traits(getMember, opt, mem), 
+					parseArgs!(Long, Short)(__traits(getMember, opt, mem),
 							prefix ~ mem ~ ".", args
 						);
 					return false;
@@ -519,7 +537,7 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
 				}
 			} else if(matchType == ArgsMatch.mustBeStruct) {
 				static if(is(typeof(__traits(getMember, opt, mem)) == struct)) {
-					parseArgs!(Long, Short)(__traits(getMember, opt, mem), 
+					parseArgs!(Long, Short)(__traits(getMember, opt, mem),
 							prefix ~ mem ~ ".", args
 						);
 					return false;
@@ -532,14 +550,14 @@ bool parseArgsImpl(string mem, string Long, string Short, Opt, Args)(
 			}
 		}
 		if(!matched && optMemArg.optional == Optional.no) {
-			throw new Exception("Non Optional argument for '" ~ mem 
+			throw new Exception("Non Optional argument for '" ~ mem
 					~ "' not found.");
 		}
 	}
 	return false;
 }
 
-private ref T remove(T)(return ref T arr, size_t idx) {
+private ref T remove(T)(return ref T arr, size_t idx) @trusted {
 	import std.traits : isArray;
 
 	static if(isArray!T) {
@@ -553,7 +571,7 @@ private ref T remove(T)(return ref T arr, size_t idx) {
 	}
 }
 
-unittest {
+@trusted unittest {
 	import std.algorithm.comparison : equal;
 
 	Array!int a;
@@ -566,7 +584,7 @@ struct UniqueShort {
 	int[128] used;
 }
 
-UniqueShort checkUniqueRecur(Opt)() {
+UniqueShort checkUniqueRecur(Opt)() @safe {
 	import std.traits : hasUDA, getUDAs;
 	UniqueShort ret;
 	foreach(mem; __traits(allMembers, Opt)) {
@@ -591,7 +609,7 @@ UniqueShort checkUniqueRecur(Opt)() {
 	return ret;
 }
 
-void checkUnique(Opt)() {
+void checkUnique(Opt)() @safe {
 	import std.array : appender;
 	import std.format : formattedWrite;
 	enum unique = checkUniqueRecur!(Opt)();
@@ -600,7 +618,7 @@ void checkUnique(Opt)() {
 	auto app = appender!string();
 	foreach(idx, it; unique.used) {
 		if(it > 1) {
-			formattedWrite(app, 
+			formattedWrite(app,
 					"The short option name '%s' was used %d times.\n",
 					cast(char)idx, it
 				);
@@ -609,7 +627,7 @@ void checkUnique(Opt)() {
 	}
 
 	if(unique.used[cast(size_t)'h'] == 1) {
-		formattedWrite(app, 
+		formattedWrite(app,
 				"The short option name 'h' are not allowed as they are "
 				~ "reservered the help dialog.\n");
 		ok = false;
@@ -633,8 +651,8 @@ unittest {
 	assert(args[0] == "funcname");
 }
 
-private bool parseArgs(string Long, string Short, Opt, Args)(ref Opt opt, 
-		string prefix, ref Args args) 
+private bool parseArgs(string Long, string Short, Opt, Args)(ref Opt opt,
+		string prefix, ref Args args)
 {
 	checkUnique!Opt();
 
@@ -646,7 +664,7 @@ private bool parseArgs(string Long, string Short, Opt, Args)(ref Opt opt,
 	return helpWanted;
 }
 
-size_t longOptionsWidth(Opt)(string prefix = "") {
+size_t longOptionsWidth(Opt)(string prefix = "") @safe {
 	import std.traits : hasUDA;
 	import std.algorithm.comparison : max;
 	size_t ret;
@@ -663,7 +681,7 @@ size_t longOptionsWidth(Opt)(string prefix = "") {
 	return ret + prefix.length;
 }
 
-size_t typeWidth(Opt)() {
+size_t typeWidth(Opt)() @safe {
 	import std.traits : hasUDA, Unqual;
 	import std.algorithm.comparison : max;
 	size_t ret;
@@ -683,11 +701,12 @@ size_t typeWidth(Opt)() {
 }
 
 size_t defaultWidth(Opt)(const ref Opt opt) @safe {
+	import std.array : appender;
 	import std.traits : hasUDA, Unqual;
 	import std.algorithm.comparison : max;
-	import stringbuffer;
 	import std.format : formattedWrite;
-	StringBuffer buf;
+
+	auto buf = appender!string();
 	size_t ret;
 	foreach(mem; __traits(allMembers, Opt)) {
 		static if(hasUDA!(__traits(getMember, Opt, mem), Argument)) {
@@ -696,10 +715,9 @@ size_t defaultWidth(Opt)(const ref Opt opt) @safe {
 					(__traits(getMember, opt, mem));
 				ret = max(ret, s);
 			} else {
-				buf.removeAll();
-				formattedWrite(buf.writer(), "%s", __traits(getMember, opt,
-							mem));
-				ret = max(ret, buf.length);
+				buf = appender!string();
+				formattedWrite(buf, "%s", __traits(getMember, opt, mem));
+				ret = max(ret, buf.data.length);
 			}
 		}
 	}
@@ -707,7 +725,7 @@ size_t defaultWidth(Opt)(const ref Opt opt) @safe {
 }
 
 void printArgsHelp(Opt)(ref const(Opt) opt, string header, const(size_t)
-		termWidth = getTerminalWidth()) 
+		termWidth = getTerminalWidth()) @trusted
 {
 	import std.stdio : stdout;
 	auto ltw = stdout.lockingTextWriter();
@@ -715,15 +733,15 @@ void printArgsHelp(Opt)(ref const(Opt) opt, string header, const(size_t)
 }
 
 void printArgsHelp(LTW, Opt)(ref LTW ltw, ref const(Opt) opt, string header,
-		const(size_t) termWidth = getTerminalWidth()) 
+		const(size_t) termWidth = getTerminalWidth())
 {
-	import std.format : formattedWrite;		
+	import std.format : formattedWrite;
 	formattedWrite(ltw, "%s\n", header);
 
 	enum lLength = longOptionsWidth!(Opt)("");
 	enum tLength = typeWidth!(Opt)();
 	auto dLength = defaultWidth!(Opt)(opt) + 2;
-	printArgsHelpImpl!(lLength + 4, tLength + 2)(opt, ltw, dLength, "", 
+	printArgsHelpImpl!(lLength + 4, tLength + 2)(opt, ltw, dLength, "",
 			termWidth
 		);
 }
@@ -738,7 +756,7 @@ string ArgsUnqual(T)() {
 	}
 }
 
-unittest {
+@safe unittest {
 	import std.traits : Unqual, isArray;
 	import std.range : ElementEncodingType;
 	enum Foo {
@@ -754,17 +772,17 @@ unittest {
 
 private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 		ref const(Opt) opt, ref LTW ltw, const size_t dLength, string prefix,
-		const(size_t) termWidth) 
+		const(size_t) termWidth)
 {
+	import std.array : appender, Appender;
 	import std.traits : hasUDA, getUDAs, Unqual, isArray, isSomeString;
-	import std.format : formattedWrite;		
+	import std.format : formattedWrite;
 	import std.range.primitives : ElementEncodingType;
-	import stringbuffer;
 	foreach(mem; __traits(allMembers, Opt)) {
 		static if(hasUDA!(__traits(getMember, opt, mem), Argument)) {
 			Argument optMemArg = getUDAs!(__traits(getMember, opt, mem), Argument)[0];
 			static if(is(typeof(__traits(getMember, Opt, mem)) == struct)) {
-				printArgsHelpImpl!(longLength, typeLength)(__traits(getMember, opt, mem), 
+				printArgsHelpImpl!(longLength, typeLength)(__traits(getMember, opt, mem),
 						ltw, dLength, mem ~ ".", termWidth);
 			} else {
 				if(optMemArg.shortName != '\0') {
@@ -773,26 +791,26 @@ private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 					formattedWrite(ltw, "     ");
 				}
 				formattedWrite(ltw, "%-*s Type: %-*s ",
-						longLength, "--" ~ prefix ~ mem, 
-						typeLength, 
+						longLength, "--" ~ prefix ~ mem,
+						typeLength,
 						//Unqual!(typeof(__traits(getMember, opt, mem))).stringof,
 						ArgsUnqual!(typeof(__traits(getMember, opt, mem))),
 					);
 				alias ArgType = Unqual!(typeof(__traits(getMember, opt, mem)));
 				static if(isArray!(ArgType) && !isSomeString!(ArgType)) {
-					StringBuffer arrBuf;
-					formattedWrite(arrBuf.writer(), "[%(%s, %)]", 
+					Appender!string arrBuf = appender!string();
+					formattedWrite(arrBuf, "[%(%s, %)]",
 							__traits(getMember, opt, mem)
 						);
 					formattedWrite(ltw, "default: %-*s",
-							dLength, arrBuf.getData()
+							dLength, arrBuf.data
 						);
 				} else {
 					formattedWrite(ltw, "default: %-*s",
 							dLength, __traits(getMember, opt, mem)
 						);
 				}
-				printHelpMessage(ltw, optMemArg, 
+				printHelpMessage(ltw, optMemArg,
 						longLength + typeLength + dLength, termWidth
 					);
 				static if(is(ArgType == enum)) {
@@ -803,7 +821,7 @@ private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 						&& is(ElementEncodingType!(ArgType) == enum)
 					)
 				{
-					printEnumValues!(LTW, 
+					printEnumValues!(LTW,
 							ElementEncodingType!(ArgType))(
 							ltw, longLength + typeLength + dLength
 						);
@@ -813,7 +831,7 @@ private void printArgsHelpImpl(size_t longLength, size_t typeLength, Opt, LTW)(
 	}
 }
 
-private size_t getTerminalWidth() {
+private size_t getTerminalWidth() @trusted {
 	version(Posix) {
 		import core.sys.posix.sys.ioctl;
 		winsize w;
@@ -825,7 +843,7 @@ private size_t getTerminalWidth() {
 }
 
 private void printEnumValues(LTW,Opt)(ref LTW ltw, const(size_t) beforeLength) {
-	import std.format : formattedWrite;		
+	import std.format : formattedWrite;
 	import std.traits : EnumMembers;
 	enum staticOffset = 44;
 	immutable helpStartLength = (beforeLength + staticOffset);
@@ -837,9 +855,9 @@ private void printEnumValues(LTW,Opt)(ref LTW ltw, const(size_t) beforeLength) {
 }
 
 private void printHelpMessage(LTW)(ref LTW ltw, ref const(Argument) optMemArg,
-		const size_t beforeLength, const(size_t) termWidth) 
+		const size_t beforeLength, const(size_t) termWidth)
 {
-	import std.format : formattedWrite;		
+	import std.format : formattedWrite;
 	//import std.stdio;
 	formattedWrite(ltw, "%5s", "Help: ");
 	int curLength;
@@ -864,6 +882,8 @@ private void printHelpMessage(LTW)(ref LTW ltw, ref const(Argument) optMemArg,
 	}
 	formattedWrite(ltw, "\n");
 }
+
+@safe:
 
 unittest {
 	static struct Options {
@@ -890,7 +910,7 @@ unittest {
 			["funcname", "--d", "false", "--c", "10"],
 			["funcname", "--d", "true", "--c", "10"],
 			["funcname", "--d", "--c", "10"]
-		]) 
+		])
 	{
 		Options opt;
 		parseArgs(opt, arg);
@@ -991,7 +1011,7 @@ unittest {
 	assertThrown!Exception(parseArgs(opt, args));
 }
 
-unittest {
+@trusted unittest {
 	import std.exception : assertThrown;
 	import std.format : format;
 	import std.conv : to;
@@ -1003,7 +1023,7 @@ unittest {
 
 	static struct Embed2 {
 		@Arg('z', "A super long and not helpful help message that should be\n"
-			~ " very long") 
+			~ " very long")
 		Enum engage = Enum.yes;
 	}
 
@@ -1027,9 +1047,9 @@ unittest {
 			opt.en.en2.engage, data[]));
 }
 
-unittest {
+@trusted unittest {
 	import std.exception : assertThrown;
-	import stringbuffer;
+	import std.array : appender;
 	import std.format : format;
 
 	enum Enum {
@@ -1039,7 +1059,7 @@ unittest {
 
 	static struct Embed2 {
 		@Arg('z', "A super long and not helpful help message that should be"
-			~ " very long") 
+			~ " very long")
 		Enum engage = Enum.yes;
 	}
 
@@ -1059,25 +1079,24 @@ unittest {
 	assert(opt.someValueABCDEF == 10);
 	assert(opt.en.en2.engage == Enum.yes);
 
-	StringBuffer buf;
-	auto w = buf.writer();
-	printArgsHelp(w, opt, "Some info", 100);
+	auto buf = appender!string();
+	printArgsHelp(buf, opt, "Some info", 100);
 
 	string expected =
 `Some info
-     --someValueABCDEF   Type: int      default: 10   Help: 
+     --someValueABCDEF   Type: int      default: 10   Help:
 -z   --en2.engage        Type: Enum     default: yes  Help: A super long and not helpful help message
                                                             that should be very long
                                                             Possible values:
                                                                          yes
                                                                           no
-     --arr               Type: Enum[]   default: []   Help: 
+     --arr               Type: Enum[]   default: []   Help:
                                                             Possible values:
                                                                          yes
                                                                           no
 `;
-	assert(buf.getData() == expected,
-		format("\n'%s'\n '%s'", buf.getData(), expected)
+	assert(buf.data == expected,
+		format("\n'%s'\n'%s'", buf.data, expected)
 	);
 }
 
@@ -1130,7 +1149,7 @@ unittest {
 	}
 
 	static struct Embed2 {
-		@Arg('b') 
+		@Arg('b')
 		Enum e = Enum.yes;
 	}
 
@@ -1148,7 +1167,7 @@ unittest {
 	assertThrown!Exception(parseArgs(opt, args));
 }
 
-unittest {
+@trusted unittest {
 	static struct Options {
 		@Arg('s') string[] strings = ["arg1"];
 	}
@@ -1200,7 +1219,7 @@ unittest {
 	}
 
 	static struct Embed2 {
-		@Arg('c') 
+		@Arg('c')
 		Enum e = Enum.yes;
 
 		@Arg('d')

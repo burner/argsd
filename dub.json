@@ -3,10 +3,7 @@
 	"authors": [
 		"burner"
 	],
-	"dependencies" : {
-		"stringbuffer": ">=1.1.2"
-	},
-	"description": "A command line argument and config file parser",
+	"description": "A command line argument ( args) and config file parser",
 	"copyright": "Copyright © 2017, burner",
 	"license": "LGPL3"
 }
