@@ -3,49 +3,54 @@
 
 A command line and config file parser for DLang
 
-```D
-/** argsd arguments are structures as shown below.
-Each argument that should be searched for needs to have $(D @Arg())
+
+`argsd` arguments are structures as shown below.
+Each argument that should be searched for needs to have `@Arg()`
 attached to it.
-$(D @Arg()) takes three kinds of parameter.
-1. A $(D string) which is used as the help message for that argument.
-2. A $(D char) which is used as the character for the short argument
+
+`@Arg()` takes three kinds of parameter.
+1. A `string` which is used as the help message for that argument.
+2. A `char` which is used as the character for the short argument
 selector.
-3. A $(D Optional) value to make the argument as optional or not (default
+3. A `Optional` value to make the argument as optional or not (default
 Optional.yes).
 The order of the three parameter is not relevant.
-Arguments can be nested, see the nested $(D NestedArgument) $(D struct) in
-$(D MyAppArguments).
-Arguments can be of all primitive types, arrays of primitive types and $(D
-enum)s.
+
+Arguments can be nested, see the nested `NestedArgument struct` in
+`MyAppArguments`.
+
+Arguments can be of all primitive types, arrays of primitive types and `D
+enum`s.
 
 All arguments take the shape "name value". Equal sign syntax is not
 supported.
+
 Array values can be given as separate values of as comma separated values.
 
 The name of the argument will be derived from the name of the member in
 the struct. The names are case sensitive.
+
 Arguments in nested structs have the name of the struct prefixed (compare
-"--nested.someFloatValue).
+`--nested.someFloatValue`).
 
 Short names must be unique. If they are not unique an Exception will be
-thrown. Short names are used by prefixing the character with a single "-".
-The short name "-h" is reserved for requestion the help page.
+thrown. Short names are used by prefixing the character with a single `-`.
+The short name `-h` is reserved for requestion the help page.
 
-Long names are unique by definition. Long names are prefixed with "--".
+Long names are unique by definition. Long names are prefixed with `--`.
 The long name "--help" is reserved for requestion the help page.
 
-If $(D parseArgsWithConfigFile) is used two more long names are reserved,
-"--config", and "--genConfig". Both take a $(D string) as argument.
-"--config filename" will try to parse the file with name $(I filename) and 
+If `parseArgsWithConfigFile` is used two more long names are reserved,
+`--config`, and `--genConfig`. Both take a `string` as argument.
+`--config filename` will try to parse the file with name `filename` and
 assign the values in that file to the argument struct passed.
 
-"--genConfig filename" can be used to create a config file with
+`--genConfig filename` can be used to create a config file with
 the default values of the argument struct. The name of the config file is
-again $(I filename).
-*/
+again `filename`.
 
 
+```d
 /** A enum used inside of NestedArguments */
 enum NestedEnumArgument {
 	one,
@@ -67,7 +72,7 @@ static struct MyAppArguments {
 	@Arg(Optional.no) string inputFilename;
 	@Arg('b') int[] testValues;
 
-	/** All options inside of $(D nested) need to be prefixed with
+	/** All options inside of nested need to be prefixed with
 	  "nested.".
 	*/
 	@Arg() NestedArguments nested;
@@ -76,18 +81,21 @@ static struct MyAppArguments {
 import std.algorithm.comparison : equal;
 import std.format : format;
 import std.math : approxEqual;
+```
 
-/** It is good practice to have the arguments write-protected by default.
+It is good practice to have the arguments write-protected by default.
 The following three declarations show a possible implementation.
-In order to look up a argument the developer would use the $(D config())
+
+In order to look up a argument the developer would use the `config()`
 function, returning him a write-protected version of the arguments.
 In order to populate the arguments the writable version returned from
-$(D configWriteable) is passed to $(D parseArgsWithConfigFile).
+`configWriteable` is passed to `parseArgsWithConfigFile`.
 This, and the option definitions is usually placed in a separate file and
-the visibility of $(D MyAppArguments arguments) is set to $(D private).
-*/
+the visibility of `MyAppArguments argument` is set to `D private`.
+
 MyAppArguments arguments;
 
+```d
 ref MyAppArguments configWriteable() {
 	return arguments;
 }
@@ -95,40 +103,44 @@ ref MyAppArguments configWriteable() {
 ref const(MyAppArguments) config() {
 	return arguments;
 }
+```
 
-/** This $(D string[]) serves as an example of what would be passed to the
-$(D main) function from the command line.
-*/
-string[] args = ["./executablename", 
-	"--nested.someBool", 
+This `string[]` serves as an example of what would be passed to the
+`main` function from the command line.
+
+```d
+string[] args = ["./executablename",
+	"--nested.someBool",
 	"--nested.someFloatValue", "12.34",
 	"--testValues", "10",
-	"-b", "11,12", 
-	"--nested.enumArg", "many", 
+	"-b", "11,12",
+	"--nested.enumArg", "many",
 	"--inputFilename", "nice.d"];
+```
 
-/** Populates the argument struct returned from configWriteable with the
-values passed in $(D args).
+Populates the argument struct returned from configWriteable with the
+values passed in `args`.
 
-$(D true) is returned if the help page is requested with either "-h" or
-"--help".
-$(D parseArgsWithConfigFile), and $(D parseArgs) will remove all used
-strings from $(D args).
-After the unused strings and the application name are left in $(D args).
+`true` is returned if the help page is requested with either `-h` or
+`--help`.
+`parseArgsWithConfigFile`, and `parseArgs` will remove all used
+strings from `args`.
+After the unused strings and the application name are left in `args`.
 
-Replacing $(D parseArgsWithConfigFile) with $(D parseArgs) will disable
+Replacing `parseArgsWithConfigFile` with `parseArgs` will disable
 the config file parsing option.
-*/
+
+```d
 bool helpWanted = parseArgsWithConfigFile(configWriteable(), args);
 
 if(helpWanted) {
-	/** If the help page is wanted by the user the $(D printArgsHelp)
+	/** If the help page is wanted by the user the printArgsHelp
 	function can be used to print help page.
 	*/
 	printArgsHelp(config(), "A text explaining the program");
 }
 
-/** Here it is tested if the parsing of $(D args) was successful. */
+/** Here it is tested if the parsing of args was successful. */
 assert(equal(config().testValues, [10,11,12]));
 assert(config().nested.enumArg == NestedEnumArgument.many);
 assert(approxEqual(config().nested.someFloatValue, 12.34));
