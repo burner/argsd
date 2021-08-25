@@ -5,5 +5,8 @@
 	],
 	"description": "A command line argument ( args) and config file parser",
 	"copyright": "Copyright © 2017, burner",
-	"license": "LGPL3"
+	"license": "LGPL-3.0",
+	"dependencies": {
+		"bc-string": "1.2.2"
+	}
 }

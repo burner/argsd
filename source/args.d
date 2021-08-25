@@ -611,16 +611,13 @@ UniqueShort checkUniqueRecur(Opt)() @safe {
 }
 
 void checkUnique(Opt)() @safe {
-	import std.array : appender;
-	import std.format : formattedWrite;
+	import bc.string: String, nogcFormat;
 	enum unique = checkUniqueRecur!(Opt)();
 	bool ok = true;
-	string errMsg;
-	auto app = appender!string();
+	String errMsg;
 	foreach(idx, it; unique.used) {
 		if(it > 1) {
-			formattedWrite(app,
-					"The short option name '%s' was used %d times.\n",
+			errMsg ~= nogcFormat!"The short option name '%s' was used %d times.\n"(
 					cast(char)idx, it
 				);
 			ok = false;
@@ -628,14 +625,12 @@ void checkUnique(Opt)() @safe {
 	}
 
 	if(unique.used[cast(size_t)'h'] == 1) {
-		formattedWrite(app,
-				"The short option name 'h' are not allowed as they are "
-				~ "reservered the help dialog.\n");
+		errMsg ~= "The short option name 'h' are not allowed as they are reservered the help dialog.\n";
 		ok = false;
 	}
 
 	if(!ok) {
-		throw new Exception(app.data);
+		throw new Exception(errMsg.dup);
 	}
 }
 
