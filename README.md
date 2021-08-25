@@ -5,11 +5,11 @@ A command line and config file parser for DLang
 
 ## Quick Example
 ```d
-import args: Args, Optional, parseArgsWithConfigFile, printArgsHelp;
+import args : Arg, Optional, parseArgsWithConfigFile, printArgsHelp;
 
 static struct MyOptions {
-	@Arg("the input file", Optional.no) string inputFilename;
-	@Arg("test values", 'b') int[] testValues;
+	@Arg("the input file", Optional.yes) string inputFilename;
+	@Arg("test values", 't') int[] testValues;
 	@Arg("Enable feature") bool enableFeature;
 }
 
@@ -18,7 +18,7 @@ MyOptions getOptions(ref string[] args) {
 
 	bool helpWanted = parseArgsWithConfigFile(options, args);
 
-	if(helpWanted) {
+	if (helpWanted) {
 		printArgsHelp(options, "A text explaining the program");
 	}
 	return options;
@@ -29,6 +29,16 @@ void main(string[] args) {
 
 	// use options here....
 }
+```
+
+This gives:
+```ps1
+❯ ./quick_example --help
+A text explaining the program
+     --inputFilename   Type: dchar[]   default:        Help: the input file
+-t   --testValues      Type: int[]     default: []     Help: test values
+     --enableFeature   Type: bool      default: false  Help: Enable feature
+
 ```
 
 ## Explanation
