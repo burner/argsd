@@ -79,7 +79,7 @@ import std.array : empty, front;
 
 	import std.algorithm.comparison : equal;
 	import std.format : format;
-	import std.math : approxEqual;
+	import std.math : isClose;
 	import std.array : appender;
 
 	/** It is good practice to have the arguments write-protected by default.
@@ -140,7 +140,7 @@ import std.array : empty, front;
 	/** Here it is tested if the parsing of $(D args) was successful. */
 	assert(equal(config().testValues, [10,11,12]));
 	assert(config().nested.enumArg == NestedEnumArgument.many);
-	assert(approxEqual(config().nested.someFloatValue, 12.34));
+	assert(isClose(config().nested.someFloatValue, 12.34));
 	assert(config().nested.someBool);
 	assert(config().inputFilename == "nice.d");
 }
