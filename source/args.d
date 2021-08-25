@@ -79,7 +79,7 @@ import std.array : empty, front;
 
 	import std.algorithm.comparison : equal;
 	import std.format : format;
-	import std.math : approxEqual;
+	import std.math : isClose;
 	import std.array : appender;
 
 	/** It is good practice to have the arguments write-protected by default.
@@ -140,7 +140,7 @@ import std.array : empty, front;
 	/** Here it is tested if the parsing of $(D args) was successful. */
 	assert(equal(config().testValues, [10,11,12]));
 	assert(config().nested.enumArg == NestedEnumArgument.many);
-	assert(approxEqual(config().nested.someFloatValue, 12.34));
+	assert(isClose(config().nested.someFloatValue, 12.34));
 	assert(config().nested.someBool);
 	assert(config().inputFilename == "nice.d");
 }
@@ -269,7 +269,7 @@ Array!string parseArgsConfigFile(string filename) @trusted {
 	import std.algorithm.iteration : splitter;
 	import std.algorithm.searching : startsWith;
 	import std.algorithm.mutation : strip;
-	import std.string : indexOf;
+	import std.string : indexOf, stripRight;
 
 	Array!string ret;
 	ret.insertBack("dummyBecauseTheFirstArgumentIsTheFileName");
@@ -285,8 +285,9 @@ Array!string parseArgsConfigFile(string filename) @trusted {
 			continue;
 		}
 
-		ret.insertBack(line[0 .. eq].strip(' ').strip('"'));
-		ret.insertBack(line[eq+1 .. $].strip(' ').strip('"'));
+		const lineStripped = stripRight(line); // remove trailing space or \r on Windows
+		ret.insertBack(lineStripped[0 .. eq].strip(' ').strip('"'));
+		ret.insertBack(lineStripped[eq+1 .. $].strip(' ').strip('"'));
 	}
 
 	return ret;
