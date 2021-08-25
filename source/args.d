@@ -269,7 +269,7 @@ Array!string parseArgsConfigFile(string filename) @trusted {
 	import std.algorithm.iteration : splitter;
 	import std.algorithm.searching : startsWith;
 	import std.algorithm.mutation : strip;
-	import std.string : indexOf;
+	import std.string : indexOf, stripRight;
 
 	Array!string ret;
 	ret.insertBack("dummyBecauseTheFirstArgumentIsTheFileName");
@@ -285,8 +285,9 @@ Array!string parseArgsConfigFile(string filename) @trusted {
 			continue;
 		}
 
-		ret.insertBack(line[0 .. eq].strip(' ').strip('"'));
-		ret.insertBack(line[eq+1 .. $].strip(' ').strip('"'));
+		const lineStripped = stripRight(line); // remove trailing space or \r on Windows
+		ret.insertBack(lineStripped[0 .. eq].strip(' ').strip('"'));
+		ret.insertBack(lineStripped[eq+1 .. $].strip(' ').strip('"'));
 	}
 
 	return ret;
