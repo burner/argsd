@@ -385,15 +385,15 @@ enum ArgsMatch {
 }
 
 ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
-		string prefix, string opt) @safe
+		string prefix, string opt) @safe @nogc nothrow
 {
-	import std.array : Appender, appender;
+	import bc.string : String, nogcFormat;
 	import std.format : formattedWrite;
 	import std.algorithm.searching : startsWith, canFind;
 	//import std.stdio;
 
-	Appender!string buf = appender!string();
-	formattedWrite(buf, "%s%s%s", Long, prefix, name);
+	String buf;
+	buf ~= nogcFormat!"%s%s%s"(Long, prefix, name);
 
 	//writeln("argsMatches ", buf.getData(), "' '", prefix, "' '", opt, "'");
 	if(opt.startsWith(buf.data)) {
@@ -405,11 +405,11 @@ ArgsMatch argsMatches(alias Args, string name, string Long, string Short)(
 		return ArgsMatch.none;
 	}
 
-	buf = appender!string();
-	formattedWrite(buf, "%s%s", Short, Args.shortName);
-	//writeln("argsMatches short ", buf.getData(), "' '", prefix, "' '", opt, "'");
+	String buf2;
+	buf2 ~= nogcFormat!"%s%s"(Short, Args.shortName);
+	//writeln("argsMatches short ", buf2.getData(), "' '", prefix, "' '", opt, "'");
 
-	if(buf.data == opt) {
+	if(buf2.data == opt) {
 		return ArgsMatch.complete;
 	}
 
@@ -585,7 +585,7 @@ struct UniqueShort {
 	int[128] used;
 }
 
-UniqueShort checkUniqueRecur(Opt)() @safe {
+UniqueShort checkUniqueRecur(Opt)() @safe @nogc nothrow pure {
 	import std.traits : hasUDA, getUDAs;
 	UniqueShort ret;
 	foreach(mem; __traits(allMembers, Opt)) {
@@ -660,7 +660,7 @@ private bool parseArgs(string Long, string Short, Opt, Args)(ref Opt opt,
 	return helpWanted;
 }
 
-size_t longOptionsWidth(Opt)(string prefix = "") @safe {
+size_t longOptionsWidth(Opt)(string prefix = "") @safe @nogc {
 	import std.traits : hasUDA;
 	import std.algorithm.comparison : max;
 	size_t ret;
