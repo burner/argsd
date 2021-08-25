@@ -660,7 +660,7 @@ private bool parseArgs(string Long, string Short, Opt, Args)(ref Opt opt,
 	return helpWanted;
 }
 
-size_t longOptionsWidth(Opt)(string prefix = "") @safe @nogc {
+size_t longOptionsWidth(Opt)(string prefix = "") @safe @nogc nothrow  {
 	import std.traits : hasUDA;
 	import std.algorithm.comparison : max;
 	size_t ret;
@@ -677,7 +677,7 @@ size_t longOptionsWidth(Opt)(string prefix = "") @safe @nogc {
 	return ret + prefix.length;
 }
 
-size_t typeWidth(Opt)() @safe {
+size_t typeWidth(Opt)() @safe @nogc nothrow {
 	import std.traits : hasUDA, Unqual;
 	import std.algorithm.comparison : max;
 	size_t ret;
@@ -696,13 +696,11 @@ size_t typeWidth(Opt)() @safe {
 	return ret;
 }
 
-size_t defaultWidth(Opt)(const ref Opt opt) @safe {
-	import std.array : appender;
+size_t defaultWidth(Opt)(const ref Opt opt) @safe @nogc nothrow {
+	import bc.string: String, nogcFormat;
 	import std.traits : hasUDA, Unqual;
 	import std.algorithm.comparison : max;
-	import std.format : formattedWrite;
 
-	auto buf = appender!string();
 	size_t ret;
 	foreach(mem; __traits(allMembers, Opt)) {
 		static if(hasUDA!(__traits(getMember, Opt, mem), Argument)) {
@@ -711,9 +709,8 @@ size_t defaultWidth(Opt)(const ref Opt opt) @safe {
 					(__traits(getMember, opt, mem));
 				ret = max(ret, s);
 			} else {
-				buf = appender!string();
-				formattedWrite(buf, "%s", __traits(getMember, opt, mem));
-				ret = max(ret, buf.data.length);
+				auto buf = nogcFormat!"%s"(__traits(getMember, opt, mem));
+				ret = max(ret, buf.length);
 			}
 		}
 	}
