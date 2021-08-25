@@ -4,6 +4,36 @@
 A command line and config file parser for DLang
 
 
+## Quick Example
+```d
+import args: Args, Optional, parseArgsWithConfigFile, printArgsHelp;
+
+static struct MyOptions {
+	@Arg("the input file", Optional.no) string inputFilename;
+	@Arg("test values", 'b') int[] testValues;
+	@Arg("Enable feature") bool enableFeature;
+}
+
+MyOptions getOptions(ref string[] args) {
+	MyOptions options;
+
+	bool helpWanted = parseArgsWithConfigFile(options, args);
+
+	if(helpWanted) {
+		printArgsHelp(options, "A text explaining the program");
+	}
+	return options;
+}
+
+void main(string[] args) {
+	const options = getOptions(args); // or args.dup to keep the original args
+
+	// use options here....
+}
+```
+
+## Explanation
+
 `argsd` arguments are structures as shown below.
 Each argument that should be searched for needs to have `@Arg()`
 attached to it.
@@ -25,7 +55,7 @@ enum`s.
 All arguments take the shape "name value". Equal sign syntax is not
 supported.
 
-Array values can be given as separate values of as comma separated values.
+Array values can be given as a comma separated list.
 
 The name of the argument will be derived from the name of the member in
 the struct. The names are case sensitive.
