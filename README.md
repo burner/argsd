@@ -4,6 +4,9 @@ A command line and config file parser for DLang
 
 
 ## Quick Example
+
+### Parse command line options
+
 ```d
 import args : Arg, Optional, parseArgsWithConfigFile, printArgsHelp;
 
@@ -39,6 +42,56 @@ A text explaining the program
 -t   --testValues      Type: int[]     default: []     Help: test values
      --enableFeature   Type: bool      default: false  Help: Enable feature
 
+```
+
+### Parse config file only
+
+```d
+import std.stdio;
+
+import args : Arg, Optional, parseArgsConfigFile, parseConfigFile;
+
+static struct Options {
+    @Arg("Path to some data dir", Optional.no) string dataDir;
+    @Arg("Limit for something", Optional.yes) int limit;
+    @Arg("Enable something", Optional.yes) bool enable;
+}
+
+Options getOptions(in string filePath) {
+    Options options;
+    auto data = parseArgsConfigFile(filePath);
+    parseConfigFile(options, data);
+
+    return options;
+}
+
+void main() {
+    string configPath = "my.conf";
+
+    Options options;
+    options = getOptions(configPath);
+
+    // use options here...
+	writeln("Parsed options from file ", configPath, " :");
+    writeln("dataDir=", options.dataDir);
+    writeln("limit=", options.limit);
+    writeln("enable=", options.enable);
+}
+```
+
+Assuming there is a file named "my.conf" with content
+```
+dataDir = "/data/dir"
+limit = "100"
+enable = "true"
+```
+
+The program output will be
+```
+Parsed options from file my.conf :
+dataDir=/data/dir
+limit=100
+enable=true
 ```
 
 ## Explanation
