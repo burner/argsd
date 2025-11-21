@@ -247,7 +247,7 @@ void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) @sa
 	}
 }
 
-void printHelpMessageConfig(Type,LTW)(ref LTW ltw, ref const(Argument) arg) @safe {
+void printHelpMessageConfig(Type,LTW)(ref LTW ltw, ref Argument arg) @safe {
 	import std.format : formattedWrite;
 	import std.traits : Unqual;
 
@@ -1291,7 +1291,7 @@ unittest {
 	}
 
     int[] ints = [10, 20, 30];
-    const OptionsIntArray optionsIntArray = { intList: ints };
+    OptionsIntArray optionsIntArray = { intList: ints };
 	string myints = "myints.conf";
     writeConfigToFile(myints, optionsIntArray);
 
@@ -1302,7 +1302,7 @@ unittest {
 	//}
 
     string[] strings = ["allo", "bello", "cello"];
-    const OptionsStringArray optionsStringArray = { stringList: strings };
+    OptionsStringArray optionsStringArray = { stringList: strings };
 	string mystrs = "mystrings.conf";
     writeConfigToFile(mystrs, optionsStringArray);
 
