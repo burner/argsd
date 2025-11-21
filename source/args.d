@@ -1275,3 +1275,63 @@ unittest {
 	assert(opt.en[0] == E.a);
 	assert(opt.en[1] == E.b);
 }
+
+@trusted unittest {
+	import std.file : exists, remove;
+	import std.stdio;
+	import std.conv : ConvException;
+	import std.format : format;
+
+	static struct OptionsIntArray {
+	    @Arg("List of ints", Optional.yes) int[] intList;
+	}
+
+	static struct OptionsStringArray {
+	    @Arg("List of strings", Optional.yes) string[] stringList;
+	}
+
+    int[] ints = [10, 20, 30];
+    const OptionsIntArray optionsIntArray = { intList: ints };
+	string myints = "myints.conf";
+    writeConfigToFile(myints, optionsIntArray);
+
+	//scope(exit) {
+	//	if(exists(myints)) {
+	//		remove(myints);
+	//	}
+	//}
+
+    string[] strings = ["allo", "bello", "cello"];
+    const OptionsStringArray optionsStringArray = { stringList: strings };
+	string mystrs = "mystrings.conf";
+    writeConfigToFile(mystrs, optionsStringArray);
+
+	//scope(exit) {
+	//	if(exists(mystrs)) {
+	//		remove(mystrs);
+	//	}
+	//}
+
+    OptionsIntArray parsedIntArray;
+    try
+    {
+        auto data = parseArgsConfigFile(myints);
+        parseConfigFile(parsedIntArray, data);  // throws ConvException
+    } catch(ConvException e) {
+        writeln("parse myints.conf error:", e.message()); // we get here
+    }
+	assert(parsedIntArray.intList == ints
+		, format("%s", parsedIntArray.intList)
+		);
+
+    OptionsStringArray parsedStringArray;
+    try
+    {
+        auto data = parseArgsConfigFile(mystrs);
+        parseConfigFile(parsedStringArray, data);
+    } catch(ConvException e) {
+        writeln("parse myints.conf error:", e.message());
+    }
+	assert(parsedStringArray.stringList == strings, format("%s",
+		parsedStringArray.stringList));
+}
