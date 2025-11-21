@@ -214,7 +214,7 @@ void writeConfigToFile(Opt)(string filename, ref Opt opt) @safe {
 }
 
 void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) @safe {
-	import std.traits : hasUDA, getUDAs;
+	import std.traits : hasUDA, getUDAs, isArray, isSomeString;
 	import std.format : formattedWrite;
 	import std.array;
 	foreach(mem; __traits(allMembers, Opt)) {
@@ -229,13 +229,11 @@ void writeConfigToFileImpl(Opt,LTW)(ref Opt opt, ref LTW ltw, string prefix) @sa
 				printHelpMessageConfig!(typeof(__traits(getMember, Opt, mem)))(
 						ltw, optMemArg
 					);
-				string[] testArr;
-				static if (is(typeof(testArr) == typeof(__traits(getMember, opt, mem)))) {
-					string[] optArr = __traits(getMember, opt, mem);
-					string def = optArr[0];
-					// special case: string[]
-					formattedWrite(ltw, "%s%s = \"%s\"\n",
-							prefix, mem, def
+				static if(isArray!(typeof(__traits(getMember, opt, mem)))
+					&& !isSomeString!((typeof(__traits(getMember, opt, mem))))
+				) {
+					formattedWrite(ltw, "%s%s = %--(%s,%)\n",
+						prefix, mem, __traits(getMember, opt, mem)
 					);
 				} else {
 					formattedWrite(ltw, "%s%s = \"%s\"\n",
@@ -1286,31 +1284,16 @@ unittest {
 	    @Arg("List of ints", Optional.yes) int[] intList;
 	}
 
-	static struct OptionsStringArray {
-	    @Arg("List of strings", Optional.yes) string[] stringList;
-	}
-
     int[] ints = [10, 20, 30];
     OptionsIntArray optionsIntArray = { intList: ints };
 	string myints = "myints.conf";
     writeConfigToFile(myints, optionsIntArray);
 
-	//scope(exit) {
-	//	if(exists(myints)) {
-	//		remove(myints);
-	//	}
-	//}
-
-    string[] strings = ["allo", "bello", "cello"];
-    OptionsStringArray optionsStringArray = { stringList: strings };
-	string mystrs = "mystrings.conf";
-    writeConfigToFile(mystrs, optionsStringArray);
-
-	//scope(exit) {
-	//	if(exists(mystrs)) {
-	//		remove(mystrs);
-	//	}
-	//}
+	scope(exit) {
+		if(exists(myints)) {
+			remove(myints);
+		}
+	}
 
     OptionsIntArray parsedIntArray;
     try
@@ -1323,6 +1306,29 @@ unittest {
 	assert(parsedIntArray.intList == ints
 		, format("%s", parsedIntArray.intList)
 		);
+}
+
+@trusted unittest {
+	import std.file : exists, remove;
+	import std.stdio;
+	import std.conv : ConvException;
+	import std.format : format;
+
+	static struct OptionsStringArray {
+	    @Arg("List of strings", Optional.yes) string[] stringList;
+	}
+
+    string[] strings = ["allo", "bello", "cello"];
+    OptionsStringArray optionsStringArray = { stringList: strings };
+	string mystrs = "mystrings.conf";
+    writeConfigToFile(mystrs, optionsStringArray);
+
+	scope(exit) {
+		if(exists(mystrs)) {
+			remove(mystrs);
+		}
+	}
+
 
     OptionsStringArray parsedStringArray;
     try
@@ -1332,6 +1338,7 @@ unittest {
     } catch(ConvException e) {
         writeln("parse myints.conf error:", e.message());
     }
-	assert(parsedStringArray.stringList == strings, format("%s",
-		parsedStringArray.stringList));
+	assert(parsedStringArray.stringList == strings
+		, format("\ngot: %s\nexp: %s", parsedStringArray.stringList, strings)
+		);
 }
